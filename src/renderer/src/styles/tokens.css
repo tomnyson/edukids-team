@@ -1,49 +1,72 @@
 /**
- * Design tokens — a deliberately single-theme dark palette.
- * This app sits next to a terminal, so it commits to that register rather
- * than following the system light/dark preference.
+ * Design tokens.
+ *
+ * Every colour is declared once, as `light-dark(light, dark)`. Which half wins
+ * is decided by `color-scheme` alone, so the theme switch is a single attribute
+ * on <html> and no token can drift between the two palettes.
+ *
+ * No attribute means dark: that is the app's own register, and it is also what
+ * paints before the renderer has read the settings file.
  */
 :root {
   color-scheme: dark;
+}
 
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='system'] {
+  color-scheme: light dark;
+}
+
+:root {
   /*
-   * Surfaces, darkest to lightest. The canvas sits *below* the rail so the
-   * transcript reads as a window cut into the chrome, not a panel laid on it.
+   * Surfaces. In the dark palette the canvas sits *below* the rail, so the
+   * transcript reads as a window cut into the chrome. The light palette keeps
+   * the same order of emphasis, inverted: paper for the transcript, a slightly
+   * deeper warm grey for the chrome, white reserved for what floats.
    */
-  --c-void: oklch(11% 0.003 286);
-  --c-canvas: oklch(14.5% 0.004 286);
-  --c-rail: oklch(17% 0.004 286);
-  --c-surface: oklch(21% 0.005 286);
-  --c-raised: oklch(25% 0.006 286);
+  --c-void: light-dark(oklch(94.6% 0.008 75), oklch(11% 0.003 286));
+  --c-canvas: light-dark(oklch(98.6% 0.004 75), oklch(14.5% 0.004 286));
+  --c-rail: light-dark(oklch(96.4% 0.006 75), oklch(17% 0.004 286));
+  --c-surface: light-dark(oklch(100% 0 0), oklch(21% 0.005 286));
+  --c-raised: light-dark(oklch(92.8% 0.009 75), oklch(25% 0.006 286));
 
-  --c-line: oklch(24% 0.005 286);
-  --c-line-strong: oklch(33% 0.007 286);
+  --c-line: light-dark(oklch(89% 0.008 75), oklch(24% 0.005 286));
+  --c-line-strong: light-dark(oklch(78% 0.012 75), oklch(33% 0.007 286));
 
-  --c-text: oklch(94% 0.003 286);
-  --c-text-muted: oklch(72% 0.006 286);
-  --c-text-faint: oklch(55% 0.007 286);
-
-  /* Claude clay — semantic: the mark, the user's own voice, every primary action. */
-  --c-accent: oklch(67% 0.12 42);
-  --c-accent-bright: oklch(74% 0.135 45);
-  --c-accent-dim: oklch(40% 0.06 42);
-
-  --c-danger: oklch(66% 0.175 22);
-  --c-danger-dim: oklch(32% 0.08 22);
-  --c-ok: oklch(73% 0.13 158);
+  --c-text: light-dark(oklch(26% 0.012 60), oklch(94% 0.003 286));
+  --c-text-muted: light-dark(oklch(46% 0.012 60), oklch(72% 0.006 286));
+  --c-text-faint: light-dark(oklch(60% 0.012 60), oklch(55% 0.007 286));
 
   /*
-   * Syntax. Hues borrowed from the same wheel as the clay accent and held at
-   * a similar chroma, so a code block reads as part of the app rather than a
+   * Claude clay — semantic: the mark, the user's own voice, every primary
+   * action. "Bright" means *more emphatic*, which on paper means darker.
+   */
+  --c-accent: light-dark(oklch(53% 0.145 40), oklch(67% 0.12 42));
+  --c-accent-bright: light-dark(oklch(46% 0.15 38), oklch(74% 0.135 45));
+  --c-accent-dim: light-dark(oklch(84% 0.055 42), oklch(40% 0.06 42));
+
+  --c-danger: light-dark(oklch(51% 0.19 25), oklch(66% 0.175 22));
+  --c-danger-dim: light-dark(oklch(88% 0.06 25), oklch(32% 0.08 22));
+  --c-ok: light-dark(oklch(50% 0.12 158), oklch(73% 0.13 158));
+
+  /*
+   * Syntax. Hues borrowed from the same wheel as the clay accent and held at a
+   * similar chroma, so a code block reads as part of the app rather than a
    * pasted-in terminal. Comments sit at the faint text level on purpose.
    */
-  --c-syn-comment: oklch(50% 0.012 286);
-  --c-syn-keyword: oklch(72% 0.115 350);
-  --c-syn-string: oklch(74% 0.105 152);
-  --c-syn-number: oklch(78% 0.105 78);
-  --c-syn-function: oklch(78% 0.095 236);
-  --c-syn-type: oklch(80% 0.08 200);
-  --c-syn-name: oklch(74% 0.09 60);
+  --c-syn-comment: light-dark(oklch(58% 0.014 75), oklch(50% 0.012 286));
+  --c-syn-keyword: light-dark(oklch(47% 0.17 350), oklch(72% 0.115 350));
+  --c-syn-string: light-dark(oklch(45% 0.125 152), oklch(74% 0.105 152));
+  --c-syn-number: light-dark(oklch(48% 0.13 62), oklch(78% 0.105 78));
+  --c-syn-function: light-dark(oklch(47% 0.145 250), oklch(78% 0.095 236));
+  --c-syn-type: light-dark(oklch(45% 0.1 205), oklch(80% 0.08 200));
+  --c-syn-name: light-dark(oklch(47% 0.12 40), oklch(74% 0.09 60));
+
+  /* Colour only: a shadow string cannot pass through light-dark(). */
+  --c-shadow: light-dark(rgb(60 40 20 / 0.16), rgb(0 0 0 / 0.75));
 
   --font-sans: ui-sans-serif, -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;

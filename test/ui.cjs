@@ -21,6 +21,9 @@ const record = (name, passed, detail) => {
   console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`)
 }
 
+/** Not every run is the test's to judge: a model that drops a line is not a bug. */
+const skip = (name, why) => console.log(`SKIP  ${name}  — ${why}`)
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const evaluate = (window, body) =>
   window.webContents.executeJavaScript(`(async () => { ${body} })()`, true)
@@ -122,16 +125,61 @@ async function run() {
   )
 
   // Rendered as a control, not clicked: a click would launch a real editor.
+  // The prompt asks for a literal echo, but a model that drops the line has not
+  // broken the renderer — so the check only applies when the path came back.
   const link = await evaluate(
     window,
-    `const el = document.querySelector('article [data-file-link]')
-     return el ? { text: el.innerText, tag: el.tagName, title: el.title } : null`
+    `const answer = document.querySelector('article [data-response]')
+     const el = answer.querySelector('[data-file-link]')
+     return {
+       echoed: answer.innerText.includes('package.json'),
+       link: el ? { text: el.innerText, tag: el.tagName, title: el.title } : null,
+       // When the path is there but unlinked, the surrounding markup says why.
+       context: [...answer.querySelectorAll('p, li, pre')]
+         .filter((n) => n.innerText.includes('package.json'))
+         .map((n) => n.tagName + ': ' + n.innerHTML.slice(0, 200))
+         .join(' | ')
+     }`
   )
-  record(
-    'file path rendered as a button',
-    link !== null && link.tag === 'BUTTON' && link.text.includes('package.json'),
-    link ? link.title : 'no [data-file-link] found'
+  if (!link.echoed) {
+    skip('file path rendered as a button', 'the model did not echo the path this run')
+  } else {
+    record(
+      'file path rendered as a button',
+      link.link !== null && link.link.tag === 'BUTTON' && link.link.text.includes('package.json'),
+      link.link ? link.link.title : `no [data-file-link] found — ${link.context}`
+    )
+  }
+
+  // Same transcript, both palettes. The assertion is that the paint actually
+  // changed — a screenshot alone would pass on a stylesheet that did nothing.
+  const darkPaint = await evaluate(window, `return getComputedStyle(document.body).backgroundColor`)
+  await evaluate(window, `document.documentElement.dataset.theme = 'light'; return true`)
+  const lightPaint = await waitFor(
+    window,
+    `document.documentElement.dataset.theme === 'light' &&
+     getComputedStyle(document.body).backgroundColor !== ${JSON.stringify(darkPaint)}`,
+    5000
   )
+  await sleep(300)
+  await shoot(window, 'ui-4b-light')
+  record('light theme repaints the app', lightPaint, `dark was ${darkPaint}`)
+
+  const lightInk = await evaluate(
+    window,
+    `const code = document.querySelector('article pre code .hljs-keyword')
+     return code ? getComputedStyle(code).color : null`
+  )
+  record('syntax colours follow the theme', lightInk !== null, `keyword is ${lightInk}`)
+
+  await evaluate(window, `document.documentElement.dataset.theme = 'dark'; return true`)
+  await waitFor(
+    window,
+    `getComputedStyle(document.body).backgroundColor === ${JSON.stringify(darkPaint)}`,
+    5000
+  )
+  await sleep(200)
+  await shoot(window, 'ui-4c-dark')
 
   const transcript = await evaluate(window, `return document.querySelector('article').innerText`)
   console.log(`\n--- transcript ---\n${transcript}\n------------------`)

@@ -164,7 +164,7 @@ export function RunSettings({
                     closeSubmenu()
                   }
                 }}
-                className="absolute right-full bottom-0 z-10 mr-1 w-64 rounded-[var(--radius-lg)] border border-line-strong bg-surface py-1 shadow-[0_18px_44px_-14px_rgb(0_0_0/0.75)]"
+                className="absolute right-full bottom-0 z-10 mr-1 w-64 rounded-[var(--radius-lg)] border border-line-strong bg-surface py-1 shadow-[0_18px_44px_-14px_var(--c-shadow)]"
               >
                 <MenuOption
                   scope="effort"

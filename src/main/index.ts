@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, nativeTheme, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -15,7 +15,8 @@ function createWindow(): void {
     minWidth: 720,
     minHeight: 480,
     show: false,
-    backgroundColor: '#0d0f12',
+    // Painted before the renderer exists, so it follows the resolved theme.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0d0f12' : '#f1ede7',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),

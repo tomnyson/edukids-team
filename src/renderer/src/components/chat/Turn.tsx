@@ -46,7 +46,7 @@ export function Turn({ message }: TurnProps): React.JSX.Element {
     <article className="space-y-4">
       <PromptBlock prompt={message.prompt} />
 
-      <div className="text-[length:var(--text-body)] text-ink">
+      <div data-response className="text-[length:var(--text-body)] text-ink">
         {message.response ? (
           <Markdown>{message.response}</Markdown>
         ) : (

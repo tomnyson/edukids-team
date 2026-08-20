@@ -65,7 +65,7 @@ export function Popover({
     <div
       ref={panelRef}
       aria-label={label}
-      className="absolute right-0 bottom-full z-30 mb-2 w-64 rounded-[var(--radius-lg)] border border-line-strong bg-surface py-1 shadow-[0_18px_44px_-14px_rgb(0_0_0/0.75)]"
+      className="absolute right-0 bottom-full z-30 mb-2 w-64 rounded-[var(--radius-lg)] border border-line-strong bg-surface py-1 shadow-[0_18px_44px_-14px_var(--c-shadow)]"
     >
       {children}
     </div>
