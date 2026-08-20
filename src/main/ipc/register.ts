@@ -1,3 +1,4 @@
+import { basename } from 'path'
 import { dialog, ipcMain, type BrowserWindow } from 'electron'
 // app.getVersion() reports Electron's own version until the app is packaged.
 import { version as appVersion } from '../../../package.json'
@@ -9,6 +10,8 @@ import type {
   Conversation,
   CreateConversationInput,
   Message,
+  Project,
+  ProjectPatch,
   Result,
   StreamEvent
 } from '@shared/types'
@@ -23,6 +26,13 @@ import {
   markSessionStarted,
   renameConversation
 } from '../db/queries'
+import {
+  createProject,
+  deleteProject,
+  findProject,
+  listProjects,
+  updateProject
+} from '../db/projects'
 import { resolveClaudeBinary } from '../claude/environment'
 import { runClaude } from '../claude/runner'
 import { composePrompt, validateAttachments } from '../claude/attachments'
@@ -129,8 +139,74 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   )
 
   ipcMain.handle(
+    IPC.projectsList,
+    guard(() => ok<readonly Project[]>(listProjects()))
+  )
+
+  /**
+   * The folder comes from the native picker, never from the renderer, so the
+   * path this stores is one the user pointed at in Finder.
+   */
+  ipcMain.handle(
+    IPC.projectsAdd,
+    guard(async () => {
+      const window = getWindow()
+      const options: Electron.OpenDialogOptions = {
+        title: 'Add a project folder',
+        buttonLabel: 'Add project',
+        properties: ['openDirectory', 'createDirectory']
+      }
+      const picked = window
+        ? await dialog.showOpenDialog(window, options)
+        : await dialog.showOpenDialog(options)
+
+      const path = picked.canceled ? null : picked.filePaths[0]
+      return ok<Project | null>(path ? createProject(path, basename(path) || path) : null)
+    })
+  )
+
+  ipcMain.handle(
+    IPC.projectsUpdate,
+    guard((_event, rawId: unknown, rawPatch: unknown) => {
+      const id = requireId(rawId)
+      const patch = (rawPatch ?? {}) as ProjectPatch
+      const name = typeof patch.name === 'string' ? patch.name.trim() : undefined
+      if (name !== undefined && name.length > LIMITS.projectNameMaxLength) {
+        return fail({ code: 'INVALID_INPUT', message: 'That name is too long.' })
+      }
+
+      const updated = updateProject(id, { ...patch, ...(name === undefined ? {} : { name }) })
+      return updated
+        ? ok(updated)
+        : fail({ code: 'NOT_FOUND', message: 'That project no longer exists.' })
+    })
+  )
+
+  /** Removing a project detaches its conversations; none of them are deleted. */
+  ipcMain.handle(
+    IPC.projectsRemove,
+    guard((_event, rawId: unknown) => ok(deleteProject(requireId(rawId))))
+  )
+
+  /**
+   * A chat started inside a project runs in that project's folder — the cwd is
+   * read from the row here rather than trusted from the renderer.
+   */
+  ipcMain.handle(
     IPC.conversationsCreate,
-    guard((_event, input: CreateConversationInput = {}) => ok(createConversation(input)))
+    guard((_event, input: CreateConversationInput = {}) => {
+      const project = input.projectId ? findProject(input.projectId) : null
+      if (input.projectId && !project) {
+        return fail({ code: 'NOT_FOUND', message: 'That project no longer exists.' })
+      }
+      return ok(
+        createConversation({
+          title: input.title,
+          cwd: project?.path ?? input.cwd,
+          projectId: project?.id ?? null
+        })
+      )
+    })
   )
 
   ipcMain.handle(

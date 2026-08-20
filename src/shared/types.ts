@@ -37,6 +37,21 @@ export type EffortId = (typeof EFFORTS)[number]['id']
 export const isEffortId = (value: unknown): value is EffortId =>
   EFFORTS.some((effort) => effort.id === value)
 
+/**
+ * A folder the user has named and pinned. Conversations point at one so the
+ * rail can group by project rather than by whatever directory the CLI ran in.
+ */
+export interface Project {
+  readonly id: number
+  readonly name: string
+  /** Absolute directory, chosen through the native picker. Unique per project. */
+  readonly path: string
+  /** Seeds the run settings of every chat started in this project. */
+  readonly defaultModel: ModelId | null
+  readonly defaultEffort: EffortId | null
+  readonly createdAt: string
+}
+
 export interface Conversation {
   readonly id: number
   /** UUID passed to the Claude CLI via --session-id / --resume. */
@@ -50,6 +65,8 @@ export interface Conversation {
   readonly lastModel: ModelId | null
   /** Effort used by the most recent turn; seeds the picker when reopening. */
   readonly lastEffort: EffortId | null
+  /** The project this chat belongs to; null once its project is removed. */
+  readonly projectId: number | null
   readonly createdAt: string
   readonly updatedAt: string
   readonly messageCount: number
@@ -134,4 +151,12 @@ export interface OpenedFile {
 export interface CreateConversationInput {
   readonly title?: string
   readonly cwd?: string
+  readonly projectId?: number | null
+}
+
+/** Everything about a project the renderer is allowed to change. */
+export interface ProjectPatch {
+  readonly name?: string
+  readonly defaultModel?: ModelId | null
+  readonly defaultEffort?: EffortId | null
 }

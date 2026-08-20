@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PanelLeftOpen, Paperclip } from 'lucide-react'
-import type { Conversation, EffortId, ModelId } from '@shared/types'
+import type { Conversation, EffortId, ModelId, Project } from '@shared/types'
 import { useAttachments } from '@renderer/hooks/useAttachments'
 import { useChatStream, type SendOptions } from '@renderer/hooks/useChatStream'
 import { shortenPath } from '@renderer/lib/format'
@@ -12,6 +12,8 @@ import { PendingTurnView, Turn } from './Turn'
 
 interface ChatPaneProps {
   readonly conversation: Conversation | null
+  /** The project the open chat belongs to, when it has one. */
+  readonly project: Project | null
   readonly appVersion: string | null
   readonly railHidden: boolean
   readonly onShowRail: () => void
@@ -20,6 +22,7 @@ interface ChatPaneProps {
 
 export function ChatPane({
   conversation,
+  project,
   appVersion,
   railHidden,
   onShowRail,
@@ -34,12 +37,13 @@ export function ChatPane({
   const attachments = useAttachments()
   const { settings } = useSettings()
   // Seeded from the last turn because the pane remounts per conversation; a
-  // conversation that never chose one falls back to the global default.
+  // conversation that never chose one falls back to its project's default, and
+  // then to the global one.
   const [model, setModel] = useState<ModelId | null>(
-    conversation?.lastModel ?? settings.defaultModel
+    conversation?.lastModel ?? project?.defaultModel ?? settings.defaultModel
   )
   const [effort, setEffort] = useState<EffortId | null>(
-    conversation?.lastEffort ?? settings.defaultEffort
+    conversation?.lastEffort ?? project?.defaultEffort ?? settings.defaultEffort
   )
   const [dragging, setDragging] = useState(false)
 

@@ -253,6 +253,61 @@ async function run() {
     emptyOpen.error?.message
   )
 
+  // --- projects ---------------------------------------------------------------
+  const projects = await evaluate(window, 'return await window.api.listProjects()')
+  record(
+    'projects listed',
+    projects.ok && Array.isArray(projects.data),
+    projects.ok ? `${projects.data.length} project(s)` : projects.error?.message
+  )
+
+  const ghost = await evaluate(
+    window,
+    'return await window.api.createConversation({ projectId: 987654 })'
+  )
+  record(
+    'chat in an unknown project refused',
+    !ghost.ok && ghost.error.code === 'NOT_FOUND',
+    ghost.error?.message
+  )
+
+  const ghostPatch = await evaluate(
+    window,
+    'return await window.api.updateProject(987654, { name: "nope" })'
+  )
+  record(
+    'unknown project not updatable',
+    !ghostPatch.ok && ghostPatch.error.code === 'NOT_FOUND',
+    ghostPatch.error?.message
+  )
+
+  const first = projects.ok ? projects.data[0] : null
+  if (first) {
+    const longName = await evaluate(
+      window,
+      `return await window.api.updateProject(${first.id}, { name: ${JSON.stringify('n'.repeat(400))} })`
+    )
+    record(
+      'project name length capped',
+      !longName.ok && longName.error.code === 'INVALID_INPUT',
+      longName.error?.message
+    )
+
+    // A chat started from a project must run in that project's folder.
+    const inProject = await evaluate(
+      window,
+      `return await window.api.createConversation({ title: "Smoke project chat", projectId: ${first.id} })`
+    )
+    record(
+      'new chat inherits the project folder',
+      inProject.ok && inProject.data.cwd === first.path && inProject.data.projectId === first.id,
+      inProject.ok ? inProject.data.cwd : inProject.error?.message
+    )
+    if (inProject.ok) {
+      await evaluate(window, `return await window.api.deleteConversation(${inProject.data.id})`)
+    }
+  }
+
   // --- settings -------------------------------------------------------------
   const before = await evaluate(window, 'return await window.api.getSettings()')
   record(

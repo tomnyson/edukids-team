@@ -8,7 +8,7 @@ interface UseConversations {
   readonly error: string | null
   select: (id: number) => void
   refresh: () => Promise<readonly Conversation[]>
-  create: () => Promise<Conversation | null>
+  create: (projectId?: number | null) => Promise<Conversation | null>
   remove: (id: number) => Promise<void>
   rename: (id: number, title: string) => Promise<void>
 }
@@ -31,16 +31,19 @@ export function useConversations(): UseConversations {
     return result.data
   }, [])
 
-  const create = useCallback(async (): Promise<Conversation | null> => {
-    const result = await window.api.createConversation()
-    if (!result.ok) {
-      setError(result.error.message)
-      return null
-    }
-    await refresh()
-    setActiveId(result.data.id)
-    return result.data
-  }, [refresh])
+  const create = useCallback(
+    async (projectId?: number | null): Promise<Conversation | null> => {
+      const result = await window.api.createConversation({ projectId: projectId ?? null })
+      if (!result.ok) {
+        setError(result.error.message)
+        return null
+      }
+      await refresh()
+      setActiveId(result.data.id)
+      return result.data
+    },
+    [refresh]
+  )
 
   const remove = useCallback(
     async (id: number): Promise<void> => {

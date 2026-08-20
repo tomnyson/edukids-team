@@ -1,6 +1,12 @@
 import { randomUUID } from 'crypto'
 import { homedir } from 'os'
-import type { Conversation, EffortId, Message, ModelId } from '@shared/types'
+import type {
+  Conversation,
+  CreateConversationInput,
+  EffortId,
+  Message,
+  ModelId
+} from '@shared/types'
 import { getDb } from './connection'
 
 interface ConversationRow {
@@ -11,6 +17,7 @@ interface ConversationRow {
   session_started: number
   last_model: string | null
   last_effort: string | null
+  project_id: number | null
   created_at: string
   updated_at: string
   message_count: number
@@ -37,6 +44,7 @@ const toConversation = (row: ConversationRow): Conversation => ({
   sessionStarted: row.session_started === 1,
   lastModel: row.last_model as ModelId | null,
   lastEffort: row.last_effort as EffortId | null,
+  projectId: row.project_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   messageCount: row.message_count
@@ -73,10 +81,15 @@ export function findConversation(id: number): Conversation | null {
   return row ? toConversation(row) : null
 }
 
-export function createConversation(input: { title?: string; cwd?: string } = {}): Conversation {
+export function createConversation(input: CreateConversationInput = {}): Conversation {
   const info = getDb()
-    .prepare('INSERT INTO conversations (session_id, title, cwd) VALUES (?, ?, ?)')
-    .run(randomUUID(), input.title?.trim() || 'New chat', input.cwd || homedir())
+    .prepare('INSERT INTO conversations (session_id, title, cwd, project_id) VALUES (?, ?, ?, ?)')
+    .run(
+      randomUUID(),
+      input.title?.trim() || 'New chat',
+      input.cwd || homedir(),
+      input.projectId ?? null
+    )
 
   const created = findConversation(Number(info.lastInsertRowid))
   if (!created) throw new Error('Conversation vanished immediately after insert')

@@ -14,7 +14,11 @@ export const IPC = {
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   settingsSetVoiceKey: 'settings:setVoiceKey',
-  settingsOpenFile: 'settings:openFile'
+  settingsOpenFile: 'settings:openFile',
+  projectsList: 'projects:list',
+  projectsAdd: 'projects:add',
+  projectsUpdate: 'projects:update',
+  projectsRemove: 'projects:remove'
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
@@ -24,5 +28,6 @@ export const LIMITS = {
   promptMaxLength: 100_000,
   titleMaxLength: 200,
   runTimeoutMs: 300_000,
-  maxAttachments: 20
+  maxAttachments: 20,
+  projectNameMaxLength: 80
 } as const

@@ -19,17 +19,22 @@ better-sqlite3.
   and their directories are granted with `--add-dir`.
 - **Model picker.** opus / sonnet / haiku / fable, remembered per conversation.
   Leaving it on `default` omits `--model` entirely.
-- **History rail.** Conversations are grouped under the folder the CLI ran in,
-  each group collapsible; filter by title, delete, or hide the rail entirely.
-  Titles derive from the first prompt. Duration and cost are shown per turn.
+- **Projects.** A project is a folder you pick through the native dialog. Chats
+  started in it run there and inherit its default model and effort. Removing a
+  project never deletes a chat — they move to "Unfiled".
+- **History rail.** Conversations are grouped under their project, each group
+  collapsible; filter by title, delete, or hide the rail entirely. Titles derive
+  from the first prompt. Duration and cost are shown per turn.
 - **macOS PATH handling.** GUI apps don't inherit the shell `$PATH`, so the
   binary is resolved from the login shell's environment plus the usual install
   locations (`~/.local/bin`, Homebrew, npm global).
 
 ## Data
 
-`app.getPath('userData')/history.db` — `conversations` and `messages` tables,
-created on first launch.
+`app.getPath('userData')/history.db` — `projects`, `conversations` and
+`chat_history` tables, created and migrated on launch.
+`app.getPath('userData')/settings.json` — global preferences; the voice API key
+is stored there encrypted by Electron's `safeStorage` and never leaves main.
 
 ## Security posture
 

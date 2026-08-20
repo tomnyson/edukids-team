@@ -1,90 +1,96 @@
 import { useCallback, useMemo, useState } from 'react'
-import {
-  ChevronDown,
-  ChevronRight,
-  ListCollapse,
-  Folder,
-  PanelLeftClose,
-  Plus,
-  Search,
-  Settings2
-} from 'lucide-react'
-import type { Conversation } from '@shared/types'
-import { fileName, shortenPath } from '@renderer/lib/format'
+import { FolderPlus, ListCollapse, PanelLeftClose, Plus, Search, Settings2 } from 'lucide-react'
+import type { Conversation, Project, ProjectPatch } from '@shared/types'
 import { ClaudeMark } from '@renderer/components/ui/ClaudeMark'
-import { ConversationRow } from './ConversationRow'
+import { ProjectGroup } from './ProjectGroup'
 
 interface SidebarProps {
   readonly conversations: readonly Conversation[]
+  readonly projects: readonly Project[]
   readonly activeId: number | null
   readonly claudeBinary: string | null | undefined
   readonly onSelect: (id: number) => void
-  readonly onCreate: () => void
+  readonly onCreate: (projectId: number | null) => void
   readonly onDelete: (id: number) => void
+  readonly onAddProject: () => void
+  readonly onUpdateProject: (id: number, patch: ProjectPatch) => void
+  readonly onRemoveProject: (id: number) => void
   readonly onCollapse: () => void
   readonly onOpenSettings: () => void
 }
 
 interface Group {
-  readonly cwd: string
+  /** Stable across renames, so a collapsed group stays collapsed. */
+  readonly key: string
+  readonly project: Project | null
   readonly items: readonly Conversation[]
 }
 
-/** The home folder has no useful basename — it reads as `~`, like the chip does. */
-function folderLabel(cwd: string): string {
-  const shortened = shortenPath(cwd)
-  return shortened === '~' ? '~' : fileName(cwd) || shortened
-}
-
-/** Conversations belong to the folder the CLI ran in, so the rail groups by it. */
-function groupByFolder(conversations: readonly Conversation[]): readonly Group[] {
-  const order: string[] = []
-  const buckets = new Map<string, Conversation[]>()
+/**
+ * Every project gets a group even when it holds no chats yet — an empty folder
+ * you just added has to be visible to be useful. "Unfiled" only appears when
+ * something is actually in it, and always comes last.
+ */
+function groupByProject(
+  projects: readonly Project[],
+  conversations: readonly Conversation[]
+): readonly Group[] {
+  const buckets = new Map<number | null, Conversation[]>()
 
   for (const conversation of conversations) {
-    const existing = buckets.get(conversation.cwd)
-    if (existing) {
-      existing.push(conversation)
-    } else {
-      order.push(conversation.cwd)
-      buckets.set(conversation.cwd, [conversation])
-    }
+    const bucket = buckets.get(conversation.projectId)
+    if (bucket) bucket.push(conversation)
+    else buckets.set(conversation.projectId, [conversation])
   }
 
-  return order.map((cwd) => ({ cwd, items: buckets.get(cwd) ?? [] }))
+  const groups: Group[] = projects.map((project) => ({
+    key: `project-${project.id}`,
+    project,
+    items: buckets.get(project.id) ?? []
+  }))
+
+  const unfiled = buckets.get(null)
+  if (unfiled?.length) groups.push({ key: 'unfiled', project: null, items: unfiled })
+
+  return groups
 }
 
 export function Sidebar({
   conversations,
+  projects,
   activeId,
   claudeBinary,
   onSelect,
   onCreate,
   onDelete,
+  onAddProject,
+  onUpdateProject,
+  onRemoveProject,
   onCollapse,
   onOpenSettings
 }: SidebarProps): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
-  const [collapsedFolders, setCollapsedFolders] = useState<ReadonlySet<string>>(new Set())
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(new Set())
 
   const groups = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const matching = needle
-      ? conversations.filter((item) => item.title.toLowerCase().includes(needle))
-      : conversations
-    return groupByFolder(matching)
-  }, [conversations, query])
+    if (!needle) return groupByProject(projects, conversations)
 
-  const toggleFolder = useCallback((cwd: string): void => {
-    setCollapsedFolders((current) => {
+    // A search is about the chats, so projects that match nothing drop out.
+    const matching = conversations.filter((item) => item.title.toLowerCase().includes(needle))
+    return groupByProject(projects, matching).filter((group) => group.items.length > 0)
+  }, [conversations, projects, query])
+
+  const toggleGroup = useCallback((key: string): void => {
+    setCollapsedGroups((current) => {
       const next = new Set(current)
-      if (!next.delete(cwd)) next.add(cwd)
+      if (!next.delete(key)) next.add(key)
       return next
     })
   }, [])
 
-  const allCollapsed = groups.length > 0 && groups.every((g) => collapsedFolders.has(g.cwd))
+  const allCollapsed = groups.length > 0 && groups.every((group) => collapsedGroups.has(group.key))
 
   return (
     <nav
@@ -116,7 +122,7 @@ export function Sidebar({
       <div className="px-3 pb-3">
         <button
           type="button"
-          onClick={onCreate}
+          onClick={() => onCreate(null)}
           className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface py-1.5 text-[length:var(--text-ui)] font-medium text-muted transition-all duration-[var(--duration-fast)] hover:border-accent-dim hover:bg-raised hover:text-ink active:scale-[0.99]"
         >
           <Plus aria-hidden className="size-3.5" />
@@ -125,8 +131,11 @@ export function Sidebar({
       </div>
 
       <div className="flex h-7 items-center gap-1 px-3">
-        <h2 className="text-[length:var(--text-micro)] text-faint">Conversations</h2>
+        <h2 className="text-[length:var(--text-micro)] text-faint">Projects</h2>
         <div className="ml-auto flex items-center gap-0.5">
+          <RailAction label="Add project folder" onClick={onAddProject}>
+            <FolderPlus aria-hidden className="size-3.5" />
+          </RailAction>
           <RailAction
             label={searching ? 'Close search' : 'Search conversations'}
             active={searching}
@@ -138,9 +147,9 @@ export function Sidebar({
             <Search aria-hidden className="size-3.5" />
           </RailAction>
           <RailAction
-            label={allCollapsed ? 'Expand all folders' : 'Collapse all folders'}
+            label={allCollapsed ? 'Expand all projects' : 'Collapse all projects'}
             onClick={() =>
-              setCollapsedFolders(allCollapsed ? new Set() : new Set(groups.map((g) => g.cwd)))
+              setCollapsedGroups(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))
             }
           >
             <ListCollapse aria-hidden className="size-3.5" />
@@ -168,18 +177,22 @@ export function Sidebar({
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-1.5 pb-2">
         {groups.length === 0 ? (
           <p className="px-2 py-4 text-[length:var(--text-micro)] text-faint">
-            {query ? 'Nothing matches that.' : 'No conversations yet.'}
+            {query ? 'Nothing matches that.' : 'No projects yet — add a folder to start one.'}
           </p>
         ) : (
           groups.map((group) => (
-            <FolderGroup
-              key={group.cwd}
-              group={group}
-              collapsed={collapsedFolders.has(group.cwd)}
+            <ProjectGroup
+              key={group.key}
+              project={group.project}
+              items={group.items}
+              collapsed={collapsedGroups.has(group.key)}
               activeId={activeId}
-              onToggle={toggleFolder}
+              onToggle={() => toggleGroup(group.key)}
               onSelect={onSelect}
               onDelete={onDelete}
+              onNewChat={onCreate}
+              onUpdate={onUpdateProject}
+              onRemove={onRemoveProject}
             />
           ))
         )}
@@ -236,62 +249,5 @@ function RailAction({ label, active, onClick, children }: RailActionProps): Reac
       {children}
       <span className="sr-only">{label}</span>
     </button>
-  )
-}
-
-interface FolderGroupProps {
-  readonly group: Group
-  readonly collapsed: boolean
-  readonly activeId: number | null
-  readonly onToggle: (cwd: string) => void
-  readonly onSelect: (id: number) => void
-  readonly onDelete: (id: number) => void
-}
-
-function FolderGroup({
-  group,
-  collapsed,
-  activeId,
-  onToggle,
-  onSelect,
-  onDelete
-}: FolderGroupProps): React.JSX.Element {
-  return (
-    <section className="pb-1">
-      <button
-        type="button"
-        onClick={() => onToggle(group.cwd)}
-        title={group.cwd}
-        aria-expanded={!collapsed}
-        className="group flex w-full items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 text-left transition-colors duration-[var(--duration-fast)] hover:bg-surface"
-      >
-        {collapsed ? (
-          <ChevronRight aria-hidden className="size-3 shrink-0 text-faint" />
-        ) : (
-          <ChevronDown aria-hidden className="size-3 shrink-0 text-faint" />
-        )}
-        <Folder aria-hidden className="size-3.5 shrink-0 text-accent" />
-        <span className="truncate text-[length:var(--text-ui)] text-muted group-hover:text-ink">
-          {folderLabel(group.cwd)}
-        </span>
-        <span className="ml-auto shrink-0 font-mono text-[length:var(--text-micro)] text-faint">
-          {group.items.length}
-        </span>
-      </button>
-
-      {collapsed ? null : (
-        <ul className="mt-0.5 pl-3">
-          {group.items.map((conversation) => (
-            <ConversationRow
-              key={conversation.id}
-              conversation={conversation}
-              active={conversation.id === activeId}
-              onSelect={onSelect}
-              onDelete={onDelete}
-            />
-          ))}
-        </ul>
-      )}
-    </section>
   )
 }

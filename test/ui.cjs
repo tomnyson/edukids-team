@@ -356,6 +356,90 @@ async function run() {
     )
   )
 
+  // --- projects ---------------------------------------------------------------
+  // The folder always comes from the native picker, so the test answers it.
+  const projectDir = mkdtempSync(join(tmpdir(), 'claude-gui-project-'))
+  const projectName = projectDir.slice(projectDir.lastIndexOf('/') + 1)
+  require('electron').dialog.showOpenDialog = async () => ({
+    canceled: false,
+    filePaths: [projectDir]
+  })
+
+  const SECTION = `[...document.querySelectorAll('section')]
+    .find((s) => s.querySelector('[title="${projectDir}"]'))`
+
+  record(
+    'chats with no project land in Unfiled',
+    await waitFor(
+      window,
+      `document.querySelector('nav[aria-label="Conversation history"]').innerText.includes('Unfiled')`,
+      3000
+    )
+  )
+
+  await evaluate(
+    window,
+    `document.querySelector('[title="Add project folder"]').click(); return true`
+  )
+  record(
+    'picking a folder adds a project',
+    await waitFor(
+      window,
+      `document.querySelector('nav[aria-label="Conversation history"]').innerText.includes(${JSON.stringify(projectName)})`,
+      5000
+    ),
+    projectName
+  )
+
+  await evaluate(window, `${SECTION}.querySelector('[title="New chat here"]').click(); return true`)
+  record(
+    'a chat started in a project sits under it',
+    await waitFor(window, `${SECTION}.querySelectorAll('li button').length > 0`, 5000)
+  )
+
+  const inProjectCwd = await evaluate(
+    window,
+    `const list = await window.api.listConversations()
+     const chat = list.data.find((c) => c.projectId !== null)
+     return chat ? chat.cwd : null`
+  )
+  record('the new chat runs in the project folder', inProjectCwd === projectDir, inProjectCwd)
+
+  await evaluate(
+    window,
+    `${SECTION}.querySelector('[title="Project settings"]').click(); return true`
+  )
+  record(
+    'project settings open',
+    await waitFor(window, `!!${SECTION}.querySelector('select[aria-label="Effort"]')`, 3000)
+  )
+  await shoot(window, 'ui-4f-projects')
+
+  await evaluate(window, CHOOSE('Effort', 'high'))
+  const storedEffort = await waitFor(
+    window,
+    `(await window.api.listProjects()).data.some((p) => p.defaultEffort === 'high')`,
+    3000
+  )
+  record('a project default is saved', storedEffort)
+
+  await evaluate(
+    window,
+    `${SECTION}.querySelector('[title="Remove project"]').click(); return true`
+  )
+  const detached = await waitFor(
+    window,
+    `await (async () => {
+       const rail = document.querySelector('nav[aria-label="Conversation history"]').innerText
+       const list = await window.api.listConversations()
+       return !rail.includes(${JSON.stringify(projectName)}) &&
+              rail.includes('Unfiled') &&
+              list.data.every((c) => c.projectId === null)
+     })()`,
+    5000
+  )
+  record('removing a project keeps its chats, unfiled', detached)
+
   const failed = steps.filter((step) => !step.passed)
   console.log(`\nscreenshots: ${OUT_DIR}`)
   console.log(`${steps.length - failed.length}/${steps.length} checks passed`)

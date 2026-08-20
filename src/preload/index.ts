@@ -8,6 +8,8 @@ import type {
   CreateConversationInput,
   Message,
   OpenedFile,
+  Project,
+  ProjectPatch,
   Result,
   StreamEvent,
   SystemInfo
@@ -32,6 +34,18 @@ const api = {
 
   /** Reveals settings.json in Finder for hand-editing. */
   openSettingsFile: (): Promise<Result<string>> => ipcRenderer.invoke(IPC.settingsOpenFile),
+
+  listProjects: (): Promise<Result<readonly Project[]>> => ipcRenderer.invoke(IPC.projectsList),
+
+  /** Opens the folder picker; resolves to null when the user cancels. */
+  addProject: (): Promise<Result<Project | null>> => ipcRenderer.invoke(IPC.projectsAdd),
+
+  updateProject: (id: number, patch: ProjectPatch): Promise<Result<Project>> =>
+    ipcRenderer.invoke(IPC.projectsUpdate, id, patch),
+
+  /** Detaches the project's conversations rather than deleting them. */
+  removeProject: (id: number): Promise<Result<boolean>> =>
+    ipcRenderer.invoke(IPC.projectsRemove, id),
 
   listConversations: (): Promise<Result<readonly Conversation[]>> =>
     ipcRenderer.invoke(IPC.conversationsList),
