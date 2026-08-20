@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { closeDb, getDb } from './db/connection'
 import { abortAllRuns, registerIpcHandlers } from './ipc/register'
+import { applyTheme } from './settings/store'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -55,6 +56,9 @@ app.whenReady().then(() => {
   } catch (error) {
     console.error('[main] database failed to open:', error)
   }
+
+  // Before the first paint, so the traffic lights match the chosen theme.
+  applyTheme()
 
   registerIpcHandlers(() => mainWindow)
   createWindow()

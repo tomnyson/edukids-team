@@ -10,7 +10,11 @@ export const IPC = {
   claudeStream: 'claude:stream',
   systemInfo: 'system:info',
   filesPick: 'files:pick',
-  filesOpen: 'files:open'
+  filesOpen: 'files:open',
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
+  settingsSetVoiceKey: 'settings:setVoiceKey',
+  settingsOpenFile: 'settings:openFile'
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

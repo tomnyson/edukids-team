@@ -27,6 +27,12 @@ import { resolveClaudeBinary } from '../claude/environment'
 import { runClaude } from '../claude/runner'
 import { composePrompt, validateAttachments } from '../claude/attachments'
 import { openFile } from '../files/open'
+import {
+  getSettingsView,
+  openSettingsFile,
+  setVoiceApiKey,
+  updateSettings
+} from '../settings/store'
 
 /** One in-flight run per conversation; a second ask replaces the first. */
 const inFlight = new Map<number, AbortController>()
@@ -93,6 +99,28 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   ipcMain.handle(
     IPC.filesOpen,
     guard((_event, path: unknown, line: unknown) => openFile(path, line))
+  )
+
+  ipcMain.handle(
+    IPC.settingsGet,
+    guard(() => ok(getSettingsView()))
+  )
+
+  /** The patch is whatever the renderer sent; the store normalises it. */
+  ipcMain.handle(
+    IPC.settingsSet,
+    guard((_event, patch: unknown) => ok(updateSettings(patch)))
+  )
+
+  /** Pass null to forget the stored key. The key itself never comes back out. */
+  ipcMain.handle(
+    IPC.settingsSetVoiceKey,
+    guard((_event, key: unknown) => setVoiceApiKey(key === null ? null : key))
+  )
+
+  ipcMain.handle(
+    IPC.settingsOpenFile,
+    guard(() => openSettingsFile())
   )
 
   ipcMain.handle(

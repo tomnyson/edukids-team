@@ -253,6 +253,76 @@ async function run() {
     emptyOpen.error?.message
   )
 
+  // --- settings -------------------------------------------------------------
+  const before = await evaluate(window, 'return await window.api.getSettings()')
+  record(
+    'settings readable',
+    before.ok && typeof before.data.theme === 'string' && typeof before.data.voice === 'object',
+    before.ok ? `theme=${before.data.theme}` : before.error?.message
+  )
+  const original = before.ok ? before.data.theme : 'dark'
+
+  // Everything here is junk: the store must keep a working config regardless.
+  const junk = await evaluate(
+    window,
+    `return await window.api.updateSettings({ theme: "neon", defaultModel: "gpt-4", sendKey: 7, bogus: true, voice: { backend: "telepathy", language: "vietnamese" } })`
+  )
+  record(
+    'bad settings fall back to defaults',
+    junk.ok &&
+      junk.data.theme === original &&
+      junk.data.defaultModel === null &&
+      junk.data.sendKey === 'enter' &&
+      junk.data.voice.backend === 'local' &&
+      junk.data.voice.language === 'auto',
+    junk.ok ? JSON.stringify(junk.data.voice) : junk.error?.message
+  )
+
+  record('unknown settings keys dropped', junk.ok && junk.data.bogus === undefined)
+
+  const themed = await evaluate(
+    window,
+    'return await window.api.updateSettings({ theme: "light", defaultEffort: "high" })'
+  )
+  const reread = await evaluate(window, 'return await window.api.getSettings()')
+  record(
+    'settings persist across reads',
+    themed.ok && reread.ok && reread.data.theme === 'light' && reread.data.defaultEffort === 'high',
+    reread.ok ? `${reread.data.theme}/${reread.data.defaultEffort}` : reread.error?.message
+  )
+
+  const blankKey = await evaluate(window, 'return await window.api.setVoiceApiKey("   ")')
+  record(
+    'blank api key rejected',
+    !blankKey.ok && blankKey.error.code === 'INVALID_INPUT',
+    blankKey.error?.message
+  )
+
+  const stored = await evaluate(
+    window,
+    'return await window.api.setVoiceApiKey("sk-smoke-test-key-not-real")'
+  )
+  const view = await evaluate(window, 'return await window.api.getSettings()')
+  // Stored or refused is fine; leaking the key is not.
+  record(
+    'api key never crosses the bridge',
+    view.ok && !('voiceApiKey' in view.data) && !JSON.stringify(view.data).includes('sk-smoke'),
+    stored.ok ? `configured=${view.ok && view.data.voiceKeyConfigured}` : stored.error?.message
+  )
+
+  const cleared = await evaluate(window, 'return await window.api.setVoiceApiKey(null)')
+  record(
+    'api key can be cleared',
+    cleared.ok && cleared.data.voiceKeyConfigured === false,
+    cleared.ok ? '' : cleared.error?.message
+  )
+
+  // Leave the machine as we found it.
+  await evaluate(
+    window,
+    `return await window.api.updateSettings({ theme: ${JSON.stringify(original)}, defaultEffort: null })`
+  )
+
   await finish(window)
 }
 

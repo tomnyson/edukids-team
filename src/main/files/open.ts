@@ -5,6 +5,7 @@ import { isAbsolute, join } from 'path'
 import { shell } from 'electron'
 import type { OpenedFile, Result } from '@shared/types'
 import { getEnrichedPath, isExecutable } from '../claude/environment'
+import { getSettings } from '../settings/store'
 
 /**
  * Opens a path Claude mentioned. Everything here treats that path as untrusted
@@ -65,7 +66,8 @@ export async function openFile(rawPath: unknown, rawLine: unknown): Promise<Resu
     }
   }
 
-  const editor = await resolveEditor()
+  // Settings can send everything to the system handler instead of VS Code.
+  const editor = getSettings().editor === 'system' ? null : await resolveEditor()
   if (editor) {
     // `-g file:line` is what makes the editor land on the right line.
     const args = line && !isDirectory ? ['-g', `${path}:${line}`] : [path]

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC } from '@shared/ipc'
+import type { SettingsView } from '@shared/settings'
 import type {
   AskRequest,
   AskResult,
@@ -18,6 +19,19 @@ import type {
  */
 const api = {
   systemInfo: (): Promise<Result<SystemInfo>> => ipcRenderer.invoke(IPC.systemInfo),
+
+  getSettings: (): Promise<Result<SettingsView>> => ipcRenderer.invoke(IPC.settingsGet),
+
+  /** Partial update; unknown keys and bad values are dropped by the main process. */
+  updateSettings: (patch: Record<string, unknown>): Promise<Result<SettingsView>> =>
+    ipcRenderer.invoke(IPC.settingsSet, patch),
+
+  /** Stores the key in the system keychain, or refuses. Pass null to clear it. */
+  setVoiceApiKey: (key: string | null): Promise<Result<SettingsView>> =>
+    ipcRenderer.invoke(IPC.settingsSetVoiceKey, key),
+
+  /** Reveals settings.json in Finder for hand-editing. */
+  openSettingsFile: (): Promise<Result<string>> => ipcRenderer.invoke(IPC.settingsOpenFile),
 
   listConversations: (): Promise<Result<readonly Conversation[]>> =>
     ipcRenderer.invoke(IPC.conversationsList),
