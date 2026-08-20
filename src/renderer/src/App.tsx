@@ -4,12 +4,14 @@ import { useConversations } from './hooks/useConversations'
 import { Sidebar } from './components/sidebar/Sidebar'
 import { ChatPane } from './components/chat/ChatPane'
 import { ErrorNotice } from './components/ui/ErrorNotice'
+import { SettingsDialog } from './components/settings/SettingsDialog'
 
 export function App(): React.JSX.Element {
   const { conversations, activeId, error, select, refresh, create, remove } = useConversations()
   const [system, setSystem] = useState<SystemInfo | null | undefined>(undefined)
   const [dismissed, setDismissed] = useState(false)
   const [railHidden, setRailHidden] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     void window.api.systemInfo().then((result) => setSystem(result.ok ? result.data : null))
@@ -38,6 +40,7 @@ export function App(): React.JSX.Element {
           onCreate={() => void create()}
           onDelete={(id) => void remove(id)}
           onCollapse={() => setRailHidden(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       )}
 
@@ -61,6 +64,14 @@ export function App(): React.JSX.Element {
           onConversationChanged={onConversationChanged}
         />
       </main>
+
+      {settingsOpen ? (
+        <SettingsDialog
+          appVersion={system?.appVersion ?? null}
+          claudeBinary={claudeBinary}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
     </div>
   )
 }

@@ -48,5 +48,9 @@ export function SettingsProvider({
     [settings, ready, update, setVoiceKey]
   )
 
-  return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>
+  // Held back for one IPC round trip so anything seeded at mount — the run
+  // settings pill, the send-key hint — starts from the real values.
+  return (
+    <SettingsContext.Provider value={value}>{ready ? children : null}</SettingsContext.Provider>
+  )
 }

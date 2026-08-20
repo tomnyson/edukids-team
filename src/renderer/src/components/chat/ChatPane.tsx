@@ -6,6 +6,7 @@ import { useChatStream, type SendOptions } from '@renderer/hooks/useChatStream'
 import { shortenPath } from '@renderer/lib/format'
 import { ClaudeMark } from '@renderer/components/ui/ClaudeMark'
 import { ErrorNotice } from '@renderer/components/ui/ErrorNotice'
+import { useSettings } from '@renderer/hooks/settingsContext'
 import { Composer } from './Composer'
 import { PendingTurnView, Turn } from './Turn'
 
@@ -31,9 +32,15 @@ export function ChatPane({
   )
 
   const attachments = useAttachments()
-  // Seeded from the last turn because the pane remounts per conversation.
-  const [model, setModel] = useState<ModelId | null>(conversation?.lastModel ?? null)
-  const [effort, setEffort] = useState<EffortId | null>(conversation?.lastEffort ?? null)
+  const { settings } = useSettings()
+  // Seeded from the last turn because the pane remounts per conversation; a
+  // conversation that never chose one falls back to the global default.
+  const [model, setModel] = useState<ModelId | null>(
+    conversation?.lastModel ?? settings.defaultModel
+  )
+  const [effort, setEffort] = useState<EffortId | null>(
+    conversation?.lastEffort ?? settings.defaultEffort
+  )
   const [dragging, setDragging] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)

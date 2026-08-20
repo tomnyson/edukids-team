@@ -33,6 +33,24 @@ async function shoot(window, name) {
   writeFileSync(join(OUT_DIR, `${name}.png`), image.toPNG())
 }
 
+/** Same trick as TYPE, for the native selects in Settings. */
+const CHOOSE = (label, value) => `
+  const el = [...document.querySelectorAll('select')]
+    .find((s) => s.getAttribute('aria-label') === ${JSON.stringify(label)})
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+  setter.call(el, ${JSON.stringify(value)})
+  el.dispatchEvent(new Event('change', { bubbles: true }))
+  return el.value
+`
+
+/** Clicks a button by its visible text, scoped to a selector. */
+const CLICK_TEXT = (scope, text) => `
+  const el = [...document.querySelectorAll(${JSON.stringify(scope)})]
+    .find((b) => b.innerText.trim() === ${JSON.stringify(text)})
+  el.click()
+  return true
+`
+
 /** React tracks its own value, so a plain assignment is ignored. */
 const TYPE = (text) => `
   const box = document.querySelector('#composer')
@@ -113,7 +131,7 @@ async function run() {
 
   record(
     'run settles back to idle',
-    await waitFor(window, `document.body.innerText.includes('⌘↵ to send')`, 30000)
+    await waitFor(window, `document.body.innerText.includes('to send')`, 30000)
   )
   await sleep(500)
   await shoot(window, 'ui-4-answered')
@@ -151,10 +169,37 @@ async function run() {
     )
   }
 
-  // Same transcript, both palettes. The assertion is that the paint actually
-  // changed — a screenshot alone would pass on a stylesheet that did nothing.
+  // Same transcript, both palettes — driven through the real dialog, and the
+  // assertion is that the paint actually changed. A screenshot alone would pass
+  // on a stylesheet that did nothing.
   const darkPaint = await evaluate(window, `return getComputedStyle(document.body).backgroundColor`)
-  await evaluate(window, `document.documentElement.dataset.theme = 'light'; return true`)
+  await evaluate(
+    window,
+    `const gear = document.querySelector('#open-settings')
+     gear.focus()
+     gear.click()
+     return true`
+  )
+  record(
+    'settings dialog opens from the rail',
+    await waitFor(window, `!!document.querySelector('[role="dialog"]')`, 3000)
+  )
+  await sleep(250)
+  await shoot(window, 'ui-4b-settings')
+
+  // A global default has to reach the surface that uses it, not just the file.
+  await evaluate(window, CHOOSE('Sending', 'mod-enter'))
+  record(
+    'send-key setting reaches the composer',
+    await waitFor(window, `document.body.innerText.includes('⌘↵ to send')`, 3000)
+  )
+  await evaluate(window, CHOOSE('Sending', 'enter'))
+
+  await evaluate(window, CLICK_TEXT('nav[aria-label="Settings sections"] button', 'Appearance'))
+  await evaluate(
+    window,
+    CLICK_TEXT('[role="radiogroup"][aria-label="Theme"] [role="radio"]', 'Light')
+  )
   const lightPaint = await waitFor(
     window,
     `document.documentElement.dataset.theme === 'light' &&
@@ -162,8 +207,8 @@ async function run() {
     5000
   )
   await sleep(300)
-  await shoot(window, 'ui-4b-light')
-  record('light theme repaints the app', lightPaint, `dark was ${darkPaint}`)
+  await shoot(window, 'ui-4c-light')
+  record('choosing Light repaints the app', lightPaint, `dark was ${darkPaint}`)
 
   const lightInk = await evaluate(
     window,
@@ -172,14 +217,76 @@ async function run() {
   )
   record('syntax colours follow the theme', lightInk !== null, `keyword is ${lightInk}`)
 
-  await evaluate(window, `document.documentElement.dataset.theme = 'dark'; return true`)
+  // The cloud backend sends audio off the machine; the pane has to say so.
+  await evaluate(window, CLICK_TEXT('nav[aria-label="Settings sections"] button', 'Voice'))
+  record(
+    'voice pane renders',
+    await waitFor(window, `!!document.querySelector('[aria-label="Voice"]')`, 3000)
+  )
+  await evaluate(window, CHOOSE('Transcribe with', 'cloud'))
+  record(
+    'cloud backend warns that audio is uploaded',
+    await waitFor(
+      window,
+      `document.body.innerText.includes('uploaded to a third-party service')`,
+      3000
+    )
+  )
+  await shoot(window, 'ui-4d-voice')
+  await evaluate(window, CHOOSE('Transcribe with', 'local'))
+
+  await evaluate(
+    window,
+    `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+     document.querySelector('[role="dialog"]')
+       ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+     return true`
+  )
+  const closed = await waitFor(
+    window,
+    `!document.querySelector('[role="dialog"]') &&
+     document.activeElement === document.querySelector('#open-settings')`,
+    3000
+  )
+  record(
+    'escape closes settings and returns focus',
+    closed,
+    closed
+      ? null
+      : await evaluate(
+          window,
+          `return 'dialog=' + !!document.querySelector('[role="dialog"]') +
+                  ' focus=' + (document.activeElement.id || document.activeElement.tagName)`
+        )
+  )
+
+  // Back to dark the same way, so the rest of the run looks like the app ships.
+  await evaluate(
+    window,
+    `const gear = document.querySelector('#open-settings')
+     gear.focus()
+     gear.click()
+     return true`
+  )
+  await waitFor(window, `!!document.querySelector('[role="dialog"]')`, 3000)
+  await evaluate(window, CLICK_TEXT('nav[aria-label="Settings sections"] button', 'Appearance'))
+  await evaluate(
+    window,
+    CLICK_TEXT('[role="radiogroup"][aria-label="Theme"] [role="radio"]', 'Dark')
+  )
   await waitFor(
     window,
     `getComputedStyle(document.body).backgroundColor === ${JSON.stringify(darkPaint)}`,
     5000
   )
+  await evaluate(
+    window,
+    `document.querySelector('[role="dialog"]')
+       .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+     return true`
+  )
   await sleep(200)
-  await shoot(window, 'ui-4c-dark')
+  await shoot(window, 'ui-4e-dark')
 
   const transcript = await evaluate(window, `return document.querySelector('article').innerText`)
   console.log(`\n--- transcript ---\n${transcript}\n------------------`)

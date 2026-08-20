@@ -6,7 +6,8 @@ import {
   Folder,
   PanelLeftClose,
   Plus,
-  Search
+  Search,
+  Settings2
 } from 'lucide-react'
 import type { Conversation } from '@shared/types'
 import { fileName, shortenPath } from '@renderer/lib/format'
@@ -21,6 +22,7 @@ interface SidebarProps {
   readonly onCreate: () => void
   readonly onDelete: (id: number) => void
   readonly onCollapse: () => void
+  readonly onOpenSettings: () => void
 }
 
 interface Group {
@@ -59,7 +61,8 @@ export function Sidebar({
   onSelect,
   onCreate,
   onDelete,
-  onCollapse
+  onCollapse,
+  onOpenSettings
 }: SidebarProps): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
@@ -182,10 +185,10 @@ export function Sidebar({
         )}
       </div>
 
-      <footer className="px-3 py-2.5">
+      <footer className="flex items-center gap-2 px-3 py-2.5">
         <p
           title={claudeBinary ?? undefined}
-          className="flex items-center gap-2 font-mono text-[length:var(--text-micro)] tracking-wide text-faint"
+          className="flex min-w-0 flex-1 items-center gap-2 font-mono text-[length:var(--text-micro)] tracking-wide text-faint"
         >
           <span
             aria-hidden
@@ -197,6 +200,16 @@ export function Sidebar({
               ? 'cli not found'
               : 'cli ready'}
         </p>
+        <button
+          type="button"
+          id="open-settings"
+          onClick={onOpenSettings}
+          title="Settings"
+          className="flex size-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-faint transition-colors duration-[var(--duration-fast)] hover:bg-surface hover:text-ink"
+        >
+          <Settings2 aria-hidden className="size-4" />
+          <span className="sr-only">Settings</span>
+        </button>
       </footer>
     </nav>
   )

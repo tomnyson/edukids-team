@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowUp, Folder, Plus, Square, X } from 'lucide-react'
 import type { EffortId, ModelId } from '@shared/types'
 import { shortenPath } from '@renderer/lib/format'
+import { useSettings } from '@renderer/hooks/settingsContext'
 import { AttachmentChips } from './Attachments'
 import { RunSettings } from './RunSettings'
 
@@ -58,6 +59,9 @@ export function Composer({
     if (!busy) textareaRef.current?.focus()
   }, [busy])
 
+  const sendOnEnter = useSettings().settings.sendKey === 'enter'
+  const sendHint = sendOnEnter ? '↵ to send' : '⌘↵ to send'
+
   const submit = (): void => {
     const trimmed = value.trim()
     if (!trimmed || busy || disabled) return
@@ -66,7 +70,13 @@ export function Composer({
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    if (event.key !== 'Enter') return
+    // Vietnamese and other IME input commits with Enter — never read that as send.
+    if (event.nativeEvent.isComposing) return
+
+    const withModifier = event.metaKey || event.ctrlKey
+    // ⌘↵ always sends; a bare Enter only when the setting says so.
+    if (withModifier || (sendOnEnter && !event.shiftKey && !event.altKey)) {
       event.preventDefault()
       submit()
     }
@@ -128,7 +138,7 @@ export function Composer({
 
             <div className="flex shrink-0 items-center gap-2">
               <span className="font-mono text-[length:var(--text-micro)] tracking-wide text-faint">
-                {busy ? 'Claude is working…' : '⌘↵ to send'}
+                {busy ? 'Claude is working…' : sendHint}
               </span>
 
               <RunSettings
@@ -153,7 +163,7 @@ export function Composer({
                   type="button"
                   onClick={submit}
                   disabled={!value.trim() || disabled}
-                  title="Send (⌘↵)"
+                  title={`Send (${sendOnEnter ? '↵' : '⌘↵'})`}
                   className="flex size-7 items-center justify-center rounded-full bg-accent text-void transition-all duration-[var(--duration-fast)] hover:bg-accent-bright active:scale-95 disabled:cursor-not-allowed disabled:bg-raised disabled:text-faint disabled:active:scale-100"
                 >
                   <ArrowUp aria-hidden className="size-4" strokeWidth={2.5} />
