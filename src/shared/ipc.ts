@@ -27,7 +27,12 @@ export type IpcChannel = (typeof IPC)[keyof typeof IPC]
 export const LIMITS = {
   promptMaxLength: 100_000,
   titleMaxLength: 200,
-  runTimeoutMs: 300_000,
+  /**
+   * Idle, not total: the clock restarts on every byte the CLI writes. A long
+   * agentic run streams tool events throughout, so only a genuinely silent
+   * process trips this.
+   */
+  runIdleTimeoutMs: 300_000,
   maxAttachments: 20,
   projectNameMaxLength: 80
 } as const

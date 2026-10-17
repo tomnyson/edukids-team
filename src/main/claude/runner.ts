@@ -79,6 +79,7 @@ export async function runClaude(options: RunOptions): Promise<RunOutcome> {
     })
 
     const parser = new NdjsonParser()
+    const startedAt = Date.now()
     let streamed = ''
     let outcome: RunOutcome | null = null
     let stderr = ''
@@ -93,11 +94,24 @@ export async function runClaude(options: RunOptions): Promise<RunOutcome> {
       resolve(value)
     }
 
-    const timer = setTimeout(() => {
+    /**
+     * The deadline measures silence, not wall clock. A scaffolding run that
+     * writes files for twenty minutes keeps emitting stream events, so it is
+     * left alone; a wedged process is still killed after the idle window.
+     */
+    let timer = setTimeout(onIdle, LIMITS.runIdleTimeoutMs)
+
+    function onIdle(): void {
       timedOut = true
       child.kill('SIGTERM')
       setTimeout(() => child.kill('SIGKILL'), 2_000).unref()
-    }, LIMITS.runTimeoutMs)
+    }
+
+    const keepAlive = (): void => {
+      if (settled || timedOut) return
+      clearTimeout(timer)
+      timer = setTimeout(onIdle, LIMITS.runIdleTimeoutMs)
+    }
 
     const onAbort = (): void => {
       child.kill('SIGTERM')
@@ -127,10 +141,14 @@ export async function runClaude(options: RunOptions): Promise<RunOutcome> {
     }
 
     child.stdout.setEncoding('utf8')
-    child.stdout.on('data', (chunk: string) => consume(parser.push(chunk)))
+    child.stdout.on('data', (chunk: string) => {
+      keepAlive()
+      consume(parser.push(chunk))
+    })
 
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk: string) => {
+      keepAlive()
       stderr = `${stderr}${chunk}`.slice(-STDERR_KEEP)
     })
 
@@ -161,9 +179,9 @@ export async function runClaude(options: RunOptions): Promise<RunOutcome> {
           text: streamed,
           error: {
             code: 'TIMEOUT',
-            message: `No answer within ${Math.round(LIMITS.runTimeoutMs / 1000)}s — the run was stopped.`
+            message: `No output for ${Math.round(LIMITS.runIdleTimeoutMs / 1000)}s — the run was stopped.`
           },
-          durationMs: LIMITS.runTimeoutMs,
+          durationMs: Date.now() - startedAt,
           costUsd: null
         })
       }
