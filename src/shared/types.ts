@@ -160,3 +160,115 @@ export interface ProjectPatch {
   readonly defaultModel?: ModelId | null
   readonly defaultEffort?: EffortId | null
 }
+
+export type ProviderId =
+  | 'xai'
+  | 'anthropic'
+  | 'openai'
+  | 'gemini'
+  | 'deepseek'
+  | 'ollama'
+  | 'openrouter'
+
+export type ExecutionMode = 'roundtable' | 'pipeline' | 'single'
+
+export type SenderType = 'user' | 'member' | 'moderator' | 'system'
+
+export interface ProviderConfig {
+  readonly id: ProviderId
+  readonly apiKey: string | null
+  readonly baseUrl: string | null
+  readonly enabled: boolean
+}
+
+export interface Company {
+  readonly id: number
+  readonly name: string
+  readonly description: string | null
+  readonly avatarIcon: string
+  readonly defaultMode: ExecutionMode
+  readonly funMode: boolean
+  readonly moderatorMemberId: number | null
+  readonly members?: readonly CompanyMember[]
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface CompanyMember {
+  readonly id: number
+  readonly companyId: number
+  readonly name: string
+  readonly role: string
+  readonly provider: ProviderId
+  readonly modelId: string
+  readonly systemPrompt: string
+  readonly temperature: number
+  readonly orderIndex: number
+  readonly avatarColor: string
+  readonly createdAt: string
+}
+
+export interface CompanyMessage {
+  readonly id: number
+  readonly conversationId: number
+  readonly senderType: SenderType
+  readonly memberId: number | null
+  readonly memberName?: string | null
+  readonly memberRole?: string | null
+  readonly memberColor?: string | null
+  readonly content: string
+  readonly reasoningContent: string | null
+  readonly stepIndex: number
+  readonly phase: string | null
+  readonly durationMs: number | null
+  readonly tokensUsed: number | null
+  readonly createdAt: string
+}
+
+export interface CreateCompanyInput {
+  readonly name: string
+  readonly description?: string
+  readonly avatarIcon?: string
+  readonly defaultMode?: ExecutionMode
+  readonly funMode?: boolean
+}
+
+export interface UpdateCompanyInput {
+  readonly name?: string
+  readonly description?: string
+  readonly avatarIcon?: string
+  readonly defaultMode?: ExecutionMode
+  readonly funMode?: boolean
+  readonly moderatorMemberId?: number | null
+}
+
+export interface AddMemberInput {
+  readonly companyId: number
+  readonly name: string
+  readonly role: string
+  readonly provider: ProviderId
+  readonly modelId: string
+  readonly systemPrompt: string
+  readonly temperature?: number
+  readonly avatarColor?: string
+}
+
+export interface UpdateMemberInput {
+  readonly name?: string
+  readonly role?: string
+  readonly provider?: ProviderId
+  readonly modelId?: string
+  readonly systemPrompt?: string
+  readonly temperature?: number
+  readonly avatarColor?: string
+  readonly orderIndex?: number
+}
+
+export type CompanyStreamEvent =
+  | { readonly type: 'started'; readonly conversationId: number; readonly memberId: number | null; readonly memberName: string }
+  | { readonly type: 'reasoning'; readonly conversationId: number; readonly memberId: number | null; readonly text: string }
+  | { readonly type: 'delta'; readonly conversationId: number; readonly memberId: number | null; readonly text: string }
+  | { readonly type: 'phase'; readonly conversationId: number; readonly phase: string; readonly description: string }
+  | { readonly type: 'member-done'; readonly conversationId: number; readonly memberId: number | null; readonly message: CompanyMessage }
+  | { readonly type: 'finished'; readonly conversationId: number }
+  | { readonly type: 'error'; readonly conversationId: number; readonly error: AppError }

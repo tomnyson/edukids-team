@@ -21,7 +21,31 @@ export const IPC = {
   projectsRemove: 'projects:remove'
 } as const
 
-export type IpcChannel = (typeof IPC)[keyof typeof IPC]
+export const COMPANY_CHANNELS = {
+  list: 'companies:list',
+  get: 'companies:get',
+  create: 'companies:create',
+  update: 'companies:update',
+  delete: 'companies:delete',
+  addMember: 'companies:add-member',
+  updateMember: 'companies:update-member',
+  deleteMember: 'companies:delete-member',
+  messagesList: 'companies:messages-list',
+  askStream: 'companies:ask-stream',
+  stopStream: 'companies:stop-stream',
+  streamEvent: 'companies:stream-event'
+} as const
+
+export const PROVIDER_CHANNELS = {
+  getAll: 'providers:get-all',
+  set: 'providers:set',
+  testConnection: 'providers:test'
+} as const
+
+export type IpcChannel =
+  | (typeof IPC)[keyof typeof IPC]
+  | (typeof COMPANY_CHANNELS)[keyof typeof COMPANY_CHANNELS]
+  | (typeof PROVIDER_CHANNELS)[keyof typeof PROVIDER_CHANNELS]
 
 /** Guardrails applied at the IPC boundary before anything reaches the CLI. */
 export const LIMITS = {
