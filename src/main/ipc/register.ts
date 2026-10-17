@@ -43,6 +43,7 @@ import {
   setVoiceApiKey,
   updateSettings
 } from '../settings/store'
+import { registerCompanyIpcHandlers, abortAllCompanyRuns } from './companies'
 
 /** One in-flight run per conversation; a second ask replaces the first. */
 const inFlight = new Map<number, AbortController>()
@@ -73,6 +74,8 @@ function requireId(value: unknown): number {
 }
 
 export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void {
+  registerCompanyIpcHandlers(getWindow)
+
   const emit = (event: StreamEvent): void => {
     getWindow()?.webContents.send(IPC.claudeStream, event)
   }
@@ -333,6 +336,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
 
 /** Aborts every running CLI process; called on quit so none are orphaned. */
 export function abortAllRuns(): void {
+  abortAllCompanyRuns()
   for (const controller of inFlight.values()) controller.abort()
   inFlight.clear()
 }

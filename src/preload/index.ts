@@ -1,18 +1,27 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC } from '@shared/ipc'
+import { IPC, COMPANY_CHANNELS, PROVIDER_CHANNELS } from '@shared/ipc'
 import type { SettingsView } from '@shared/settings'
 import type {
+  AddMemberInput,
   AskRequest,
   AskResult,
+  Company,
+  CompanyMember,
+  CompanyMessage,
+  CompanyStreamEvent,
   Conversation,
+  CreateCompanyInput,
   CreateConversationInput,
   Message,
   OpenedFile,
   Project,
   ProjectPatch,
+  ProviderConfig,
   Result,
   StreamEvent,
-  SystemInfo
+  SystemInfo,
+  UpdateCompanyInput,
+  UpdateMemberInput
 } from '@shared/types'
 
 /**
@@ -93,6 +102,45 @@ const api = {
     const handler = (_event: unknown, payload: StreamEvent): void => listener(payload)
     ipcRenderer.on(IPC.claudeStream, handler)
     return () => ipcRenderer.removeListener(IPC.claudeStream, handler)
+  },
+
+  companies: {
+    list: (): Promise<Result<readonly Company[]>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.list),
+    get: (id: number): Promise<Result<Company | null>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.get, id),
+    create: (input: CreateCompanyInput): Promise<Result<Company>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.create, input),
+    update: (id: number, patch: UpdateCompanyInput): Promise<Result<Company>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.update, id, patch),
+    delete: (id: number): Promise<Result<boolean>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.delete, id),
+    addMember: (input: AddMemberInput): Promise<Result<CompanyMember>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.addMember, input),
+    updateMember: (id: number, patch: UpdateMemberInput): Promise<Result<CompanyMember>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.updateMember, id, patch),
+    deleteMember: (id: number): Promise<Result<boolean>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.deleteMember, id),
+    listMessages: (conversationId: number): Promise<Result<readonly CompanyMessage[]>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.messagesList, conversationId),
+    askStream: (companyId: number, conversationId: number, prompt: string): Promise<Result<boolean>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.askStream, companyId, conversationId, prompt),
+    stopStream: (conversationId: number): Promise<Result<boolean>> =>
+      ipcRenderer.invoke(COMPANY_CHANNELS.stopStream, conversationId),
+    onStreamEvent: (listener: (event: CompanyStreamEvent) => void): (() => void) => {
+      const handler = (_event: unknown, payload: CompanyStreamEvent): void => listener(payload)
+      ipcRenderer.on(COMPANY_CHANNELS.streamEvent, handler)
+      return () => ipcRenderer.removeListener(COMPANY_CHANNELS.streamEvent, handler)
+    }
+  },
+
+  providers: {
+    getAll: (): Promise<Result<readonly ProviderConfig[]>> =>
+      ipcRenderer.invoke(PROVIDER_CHANNELS.getAll),
+    set: (config: ProviderConfig): Promise<Result<boolean>> =>
+      ipcRenderer.invoke(PROVIDER_CHANNELS.set, config),
+    testConnection: (config: ProviderConfig): Promise<Result<boolean>> =>
+      ipcRenderer.invoke(PROVIDER_CHANNELS.testConnection, config)
   }
 }
 
