@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowUp, Folder, Plus, Square, X } from 'lucide-react'
-import type { EffortId, ModelId } from '@shared/types'
+import { ArrowUp, Folder, Plus, Square, X, Flame, AtSign } from 'lucide-react'
+import type { EffortId, ModelId, Company } from '@shared/types'
 import { shortenPath } from '@renderer/lib/format'
 import { useSettings } from '@renderer/hooks/settingsContext'
 import { AttachmentChips } from './Attachments'
@@ -18,6 +18,8 @@ interface ComposerProps {
   readonly notice: string | null
   readonly model: ModelId | null
   readonly effort: EffortId | null
+  readonly company?: Company | null
+  readonly onToggleFunMode?: () => void
   readonly onSubmit: (prompt: string) => void
   readonly onCancel: () => void
   readonly onAttach: () => void
@@ -36,6 +38,8 @@ export function Composer({
   notice,
   model,
   effort,
+  company,
+  onToggleFunMode,
   onSubmit,
   onCancel,
   onAttach,
@@ -45,6 +49,7 @@ export function Composer({
   onEffortChange
 }: ComposerProps): React.JSX.Element {
   const [value, setValue] = useState('')
+  const [showMentions, setShowMentions] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Height is measured, not animated — the growth itself must not be a transition.
@@ -125,9 +130,64 @@ export function Composer({
                 <span className="sr-only">Attach files</span>
               </button>
 
+              {company?.members && company.members.length > 0 && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowMentions(!showMentions)}
+                    title="Mention team member (@)"
+                    className="flex size-7 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-cyan-400 transition-colors"
+                  >
+                    <AtSign aria-hidden className="size-3.5" />
+                  </button>
+
+                  {showMentions && (
+                    <div className="absolute bottom-8 left-0 z-30 w-48 rounded-lg border border-cyan-500/30 bg-zinc-950 p-1 font-mono text-xs shadow-xl shadow-black/80">
+                      <div className="px-2 py-1 text-[10px] font-semibold text-zinc-500 uppercase">
+                        Mention Member
+                      </div>
+                      {company.members.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            setValue((prev) => `${prev}@${m.name} `)
+                            setShowMentions(false)
+                            textareaRef.current?.focus()
+                          }}
+                          className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-zinc-300 hover:bg-cyan-500/20 hover:text-cyan-300 transition-colors"
+                        >
+                          <span
+                            className="size-2 rounded-full"
+                            style={{ backgroundColor: m.avatarColor }}
+                          />
+                          <span className="truncate">{m.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {company && (
+                <button
+                  type="button"
+                  onClick={onToggleFunMode}
+                  title="Toggle Grok Fun Mode"
+                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold border transition-all ${
+                    company.funMode
+                      ? 'border-amber-500/60 bg-amber-500/15 text-amber-300 shadow-xs shadow-amber-500/30'
+                      : 'border-zinc-800 bg-zinc-900/60 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <Flame className={`size-3 ${company.funMode ? 'text-amber-400 fill-amber-400 animate-pulse' : ''}`} />
+                  <span>Fun Mode</span>
+                </button>
+              )}
+
               {cwd ? (
                 <span
-                  title={`Claude runs in ${cwd}`}
+                  title={`Runs in ${cwd}`}
                   className="flex min-w-0 items-center gap-1.5 rounded-full px-2 py-1 font-mono text-[length:var(--text-micro)] text-faint"
                 >
                   <Folder aria-hidden className="size-3 shrink-0" />
@@ -138,16 +198,18 @@ export function Composer({
 
             <div className="flex shrink-0 items-center gap-2">
               <span className="font-mono text-[length:var(--text-micro)] tracking-wide text-faint">
-                {busy ? 'Claude is working…' : sendHint}
+                {busy ? (company ? `${company.name} is working...` : 'Claude is working…') : sendHint}
               </span>
 
-              <RunSettings
-                model={model}
-                effort={effort}
-                disabled={disabled}
-                onModelChange={onModelChange}
-                onEffortChange={onEffortChange}
-              />
+              {!company && (
+                <RunSettings
+                  model={model}
+                  effort={effort}
+                  disabled={disabled}
+                  onModelChange={onModelChange}
+                  onEffortChange={onEffortChange}
+                />
+              )}
 
               {busy ? (
                 <button

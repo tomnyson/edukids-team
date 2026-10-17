@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { PanelLeftOpen, Paperclip } from 'lucide-react'
-import type { Conversation, EffortId, ModelId, Project } from '@shared/types'
+import { PanelLeftOpen, Paperclip, Briefcase } from 'lucide-react'
+import type { Company, Conversation, EffortId, ModelId, Project } from '@shared/types'
 import { useAttachments } from '@renderer/hooks/useAttachments'
 import { useChatStream, type SendOptions } from '@renderer/hooks/useChatStream'
+import { useCompanyChatStream } from '@renderer/hooks/useCompanyChatStream'
 import { shortenPath } from '@renderer/lib/format'
 import { ClaudeMark } from '@renderer/components/ui/ClaudeMark'
 import { ErrorNotice } from '@renderer/components/ui/ErrorNotice'
 import { useSettings } from '@renderer/hooks/settingsContext'
 import { Composer } from './Composer'
 import { PendingTurnView, Turn } from './Turn'
+import { CompanyTurn, PendingCompanyTurnView } from './CompanyTurn'
+import { ActiveSpeakerBar } from './ActiveSpeakerBar'
 
 interface ChatPaneProps {
   readonly conversation: Conversation | null
@@ -16,6 +19,8 @@ interface ChatPaneProps {
   readonly project: Project | null
   readonly appVersion: string | null
   readonly railHidden: boolean
+  readonly company?: Company | null
+  readonly onToggleFunMode?: () => void
   readonly onShowRail: () => void
   readonly onConversationChanged: () => void
 }
@@ -25,14 +30,29 @@ export function ChatPane({
   project,
   appVersion,
   railHidden,
+  company,
+  onToggleFunMode,
   onShowRail,
   onConversationChanged
 }: ChatPaneProps): React.JSX.Element {
   const conversationId = conversation?.id ?? null
-  const { messages, pending, loading, error, send, cancel, dismissError } = useChatStream(
-    conversationId,
+  const isCompanyMode = Boolean(company)
+
+  const claudeStream = useChatStream(
+    isCompanyMode ? null : conversationId,
     onConversationChanged
   )
+
+  const companyStream = useCompanyChatStream(
+    isCompanyMode ? conversationId : null,
+    company ?? null
+  )
+
+  const messages = isCompanyMode ? [] : claudeStream.messages
+  const pending = isCompanyMode ? null : claudeStream.pending
+  const loading = isCompanyMode ? companyStream.busy : claudeStream.loading
+  const error = isCompanyMode ? companyStream.error : claudeStream.error
+  const dismissError = isCompanyMode ? companyStream.dismissError : claudeStream.dismissError
 
   const attachments = useAttachments()
   const { settings } = useSettings()
@@ -70,21 +90,28 @@ export function ChatPane({
 
   const submit = useCallback(
     (prompt: string) => {
+      if (isCompanyMode) {
+        pinnedToBottom.current = true
+        clear()
+        void companyStream.send(prompt)
+        return
+      }
       const options: SendOptions = { model, effort, attachments: paths }
       lastSentRef.current = { prompt, options }
       pinnedToBottom.current = true
       clear()
-      void send(prompt, options)
+      void claudeStream.send(prompt, options)
     },
-    [clear, effort, model, paths, send]
+    [clear, effort, model, paths, claudeStream, companyStream, isCompanyMode]
   )
 
   const retry = useCallback(() => {
+    if (isCompanyMode) return
     const last = lastSentRef.current
     if (!last) return
     dismissError()
-    void send(last.prompt, last.options)
-  }, [dismissError, send])
+    void claudeStream.send(last.prompt, last.options)
+  }, [dismissError, claudeStream, isCompanyMode])
 
   const pickFiles = useCallback(async (): Promise<void> => {
     const result = await window.api.pickFiles()
@@ -104,7 +131,9 @@ export function ChatPane({
     [add]
   )
 
-  const isEmpty = messages.length === 0 && !pending
+  const isEmpty = isCompanyMode
+    ? companyStream.messages.length === 0 && !companyStream.pending
+    : messages.length === 0 && !pending
   const canAttach = conversationId !== null
 
   return (
@@ -149,10 +178,20 @@ export function ChatPane({
         {isEmpty ? null : (
           <>
             <h1
-              className="truncate text-[length:var(--text-ui)] font-medium text-ink"
+              className="truncate text-[length:var(--text-ui)] font-medium text-ink flex items-center gap-2"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
-              {conversation?.title ?? 'No conversation'}
+              {company ? (
+                <>
+                  <Briefcase className="size-4 text-cyan-400" />
+                  <span>{company.name}</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-mono">
+                    {company.defaultMode === 'pipeline' ? '⚡ Task Pipeline' : '🎙️ Roundtable'}
+                  </span>
+                </>
+              ) : (
+                conversation?.title ?? 'No conversation'
+              )}
             </h1>
             {conversation ? (
               <span
@@ -179,21 +218,43 @@ export function ChatPane({
         <div className="mx-auto w-full max-w-[var(--measure)] space-y-[var(--space-turn)]">
           {isEmpty ? <EmptyState appVersion={appVersion} /> : null}
 
-          {messages.map((message) => (
-            <Turn key={message.id} message={message} />
-          ))}
+          {isCompanyMode ? (
+            <>
+              {companyStream.messages.map((message) => (
+                <CompanyTurn key={message.id} message={message} />
+              ))}
 
-          {pending ? (
-            <PendingTurnView
-              prompt={pending.prompt}
-              streamed={pending.streamed}
-              activeTool={pending.activeTool}
-            />
-          ) : null}
+              {companyStream.pending ? (
+                <PendingCompanyTurnView pending={companyStream.pending} />
+              ) : null}
+            </>
+          ) : (
+            <>
+              {messages.map((message) => (
+                <Turn key={message.id} message={message} />
+              ))}
+
+              {pending ? (
+                <PendingTurnView
+                  prompt={pending.prompt}
+                  streamed={pending.streamed}
+                  activeTool={pending.activeTool}
+                />
+              ) : null}
+            </>
+          )}
 
           {error ? <ErrorNotice error={error} onDismiss={dismissError} onRetry={retry} /> : null}
         </div>
       </div>
+
+      {isCompanyMode && (
+        <ActiveSpeakerBar
+          activeSpeaker={companyStream.activeSpeaker}
+          phaseDescription={companyStream.phaseDescription}
+          onStop={companyStream.stop}
+        />
+      )}
 
       <Composer
         centered={isEmpty}
@@ -204,8 +265,10 @@ export function ChatPane({
         notice={attachments.notice}
         model={model}
         effort={effort}
+        company={company}
+        onToggleFunMode={onToggleFunMode}
         onSubmit={submit}
-        onCancel={() => void cancel()}
+        onCancel={isCompanyMode ? companyStream.stop : () => void claudeStream.cancel()}
         onAttach={() => void pickFiles()}
         onRemoveAttachment={attachments.remove}
         onDismissNotice={attachments.dismissNotice}
