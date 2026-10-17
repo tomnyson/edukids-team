@@ -82,7 +82,63 @@ const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_conversations_project ON conversations(project_id);
     `)
     backfillProjects(db)
-  }
+  },
+  `
+  CREATE TABLE IF NOT EXISTS providers_config (
+    id         TEXT PRIMARY KEY,
+    api_key    TEXT,
+    base_url   TEXT,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS companies (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                TEXT    NOT NULL,
+    description         TEXT,
+    avatar_icon         TEXT    NOT NULL DEFAULT 'briefcase',
+    default_mode        TEXT    NOT NULL DEFAULT 'roundtable' CHECK(default_mode IN ('roundtable', 'pipeline', 'single')),
+    fun_mode            INTEGER NOT NULL DEFAULT 0,
+    moderator_member_id INTEGER,
+    created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS company_members (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id    INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    name          TEXT    NOT NULL,
+    role          TEXT    NOT NULL,
+    provider      TEXT    NOT NULL,
+    model_id      TEXT    NOT NULL,
+    system_prompt TEXT    NOT NULL,
+    temperature   REAL    NOT NULL DEFAULT 0.7,
+    order_index   INTEGER NOT NULL DEFAULT 0,
+    avatar_color  TEXT    NOT NULL DEFAULT '#00F0FF',
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS company_messages (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id    INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_type        TEXT    NOT NULL CHECK(sender_type IN ('user', 'member', 'moderator', 'system')),
+    member_id          INTEGER REFERENCES company_members(id) ON DELETE SET NULL,
+    content            TEXT    NOT NULL,
+    reasoning_content  TEXT,
+    step_index         INTEGER NOT NULL DEFAULT 0,
+    phase              TEXT,
+    duration_ms        INTEGER,
+    tokens_used        INTEGER,
+    created_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  ALTER TABLE conversations ADD COLUMN company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL;
+  ALTER TABLE conversations ADD COLUMN execution_mode TEXT DEFAULT 'roundtable';
+  ALTER TABLE conversations ADD COLUMN fun_mode INTEGER DEFAULT 0;
+
+  CREATE INDEX IF NOT EXISTS idx_company_messages_conv ON company_messages(conversation_id, id);
+  CREATE INDEX IF NOT EXISTS idx_company_members_company ON company_members(company_id, order_index);
+  `
 ]
 
 export function migrate(db: Database.Database): void {
