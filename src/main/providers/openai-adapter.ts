@@ -14,7 +14,17 @@ export async function runOpenAICompatible(
   request: LLMRequest,
   callbacks: LLMCallbacks
 ): Promise<LLMRunResult> {
-  const baseUrl = customBaseUrl?.trim() || DEFAULT_ENDPOINTS[request.provider] || 'https://api.openai.com/v1'
+  let baseUrl = customBaseUrl?.trim() || DEFAULT_ENDPOINTS[request.provider] || 'https://api.openai.com/v1'
+
+  if (request.provider === 'ollama' && !customBaseUrl?.trim()) {
+    try {
+      const probe = await fetch('http://localhost:11434/api/version', { signal: AbortSignal.timeout(500) })
+      if (!probe.ok) baseUrl = 'http://localhost:1234/v1'
+    } catch {
+      baseUrl = 'http://localhost:1234/v1'
+    }
+  }
+
   const startedAt = Date.now()
 
   const systemMessage = request.funMode

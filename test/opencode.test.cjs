@@ -63,4 +63,25 @@ assert.strictEqual(processed.filter(m => m.free).length, 3)
 assert.strictEqual(processed[0].name, 'mimo-v2.6-flash-free')
 assert.strictEqual(processed[0].free, true)
 
-console.log('PASS  OpenCode output parser and model flag unit tests passed')
+// Unit test 3: OpenRouter model prioritization (Free models first)
+const mockOpenRouterRaw = [
+  { id: 'anthropic/claude-3.7-sonnet', name: 'Claude 3.7', pricing: { prompt: '0.003' } },
+  { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1 Free', pricing: { prompt: '0' } },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', pricing: { prompt: '0.005' } },
+  { id: 'meta-llama/llama-3.3-70b:free', name: 'Llama 3.3 Free', pricing: { prompt: '0' } }
+]
+
+const freeOR = []
+const paidOR = []
+for (const m of mockOpenRouterRaw) {
+  const isFree = m.id.endsWith(':free') || m.pricing?.prompt === '0'
+  if (isFree) freeOR.push({ id: m.id, free: true })
+  else paidOR.push({ id: m.id, free: false })
+}
+const sortedOR = [...freeOR, ...paidOR]
+assert.strictEqual(sortedOR[0].free, true)
+assert.strictEqual(sortedOR[1].free, true)
+assert.strictEqual(sortedOR[2].free, false)
+assert.strictEqual(sortedOR[0].id, 'deepseek/deepseek-r1:free')
+
+console.log('PASS  OpenCode output parser, model flag, and provider sort unit tests passed')

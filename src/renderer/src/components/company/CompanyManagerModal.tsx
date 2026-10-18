@@ -146,17 +146,43 @@ export function CompanyManagerModal({
   const [mPrompt, setMPrompt] = useState('')
   const [mColor, setMColor] = useState('#00F0FF')
   const [availableModels, setAvailableModels] = useState<readonly ModelOption[]>([])
+  const [modelsCache, setModelsCache] = useState<Partial<Record<ProviderId, readonly ModelOption[]>>>({})
   const [loadingModels, setLoadingModels] = useState(false)
   const [isCustomModel, setIsCustomModel] = useState(false)
   const COLOR_OPTIONS = ['#00F0FF', '#D97706', '#10B981', '#8B5CF6', '#EC4899']
 
-  const loadModelsForProvider = async (provider: ProviderId): Promise<void> => {
+  const ALL_PROVIDERS: readonly ProviderId[] = [
+    'opencode',
+    'xai',
+    'anthropic',
+    'openai',
+    'gemini',
+    'deepseek',
+    'ollama',
+    'openrouter'
+  ]
+
+  const loadModelsForProvider = async (
+    provider: ProviderId,
+    forceRefresh = false
+  ): Promise<void> => {
+    // If already in cache and not forcing refresh, use instantly
+    if (!forceRefresh && modelsCache[provider]?.length) {
+      const cached = modelsCache[provider]!
+      setAvailableModels(cached)
+      if (!isCustomModel && (!mModel || !cached.some((m) => m.id === mModel))) {
+        setMModel(cached[0].id)
+      }
+      return
+    }
+
     setLoadingModels(true)
     try {
       const res = await window.api.providers.listModels(provider)
       if (res.ok && res.data.length > 0) {
+        setModelsCache((prev) => ({ ...prev, [provider]: res.data }))
         setAvailableModels(res.data)
-        if (!isCustomModel) {
+        if (!isCustomModel && (!mModel || !res.data.some((m) => m.id === mModel))) {
           setMModel(res.data[0].id)
         }
       } else {
@@ -166,6 +192,28 @@ export function CompanyManagerModal({
       setLoadingModels(false)
     }
   }
+
+  // Preload models for all providers eagerly
+  useEffect(() => {
+    void Promise.all(
+      ALL_PROVIDERS.map(async (p) => {
+        try {
+          const res = await window.api.providers.listModels(p)
+          if (res.ok && res.data.length > 0) {
+            setModelsCache((prev) => ({ ...prev, [p]: res.data }))
+            if (p === mProvider && availableModels.length === 0) {
+              setAvailableModels(res.data)
+              if (!isCustomModel && !mModel) {
+                setMModel(res.data[0].id)
+              }
+            }
+          }
+        } catch {
+          // ignore background preload error
+        }
+      })
+    )
+  }, [])
 
   useEffect(() => {
     if (isAddingMember) {
@@ -474,17 +522,40 @@ export function CompanyManagerModal({
                           const p = e.target.value as ProviderId
                           setMProvider(p)
                           setIsCustomModel(false)
+                          if (modelsCache[p]?.length) {
+                            setAvailableModels(modelsCache[p]!)
+                            setMModel(modelsCache[p]![0].id)
+                          } else {
+                            setAvailableModels([])
+                            void loadModelsForProvider(p)
+                          }
                         }}
                         className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
                       >
-                        <option value="opencode">🆓 OpenCode CLI (Free)</option>
-                        <option value="xai">xAI Grok</option>
-                        <option value="anthropic">Anthropic Claude</option>
-                        <option value="openai">OpenAI</option>
-                        <option value="gemini">Google Gemini</option>
-                        <option value="deepseek">DeepSeek</option>
-                        <option value="ollama">Ollama (Local)</option>
-                        <option value="openrouter">OpenRouter</option>
+                        <option value="opencode">
+                          🆓 OpenCode CLI (Free{modelsCache.opencode?.length ? ` · ${modelsCache.opencode.length}` : ''})
+                        </option>
+                        <option value="xai">
+                          xAI Grok{modelsCache.xai?.length ? ` · ${modelsCache.xai.length}` : ''}
+                        </option>
+                        <option value="anthropic">
+                          Anthropic Claude{modelsCache.anthropic?.length ? ` · ${modelsCache.anthropic.length}` : ''}
+                        </option>
+                        <option value="openai">
+                          OpenAI{modelsCache.openai?.length ? ` · ${modelsCache.openai.length}` : ''}
+                        </option>
+                        <option value="gemini">
+                          Google Gemini{modelsCache.gemini?.length ? ` · ${modelsCache.gemini.length}` : ''}
+                        </option>
+                        <option value="deepseek">
+                          DeepSeek{modelsCache.deepseek?.length ? ` · ${modelsCache.deepseek.length}` : ''}
+                        </option>
+                        <option value="ollama">
+                          Local (Ollama / LM Studio{modelsCache.ollama?.length ? ` · ${modelsCache.ollama.length}` : ''})
+                        </option>
+                        <option value="openrouter">
+                          OpenRouter{modelsCache.openrouter?.length ? ` · ${modelsCache.openrouter.length}` : ''}
+                        </option>
                       </select>
 
                       <div className="flex items-center gap-1">
@@ -500,11 +571,11 @@ export function CompanyManagerModal({
                           <select
                             value={mModel}
                             onChange={(e) => setMModel(e.target.value)}
-                            disabled={loadingModels}
+                            disabled={loadingModels && availableModels.length === 0}
                             className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100 disabled:opacity-50"
                           >
-                            {loadingModels ? (
-                              <option>Loading models...</option>
+                            {loadingModels && availableModels.length === 0 ? (
+                              <option>Scanning models...</option>
                             ) : availableModels.length > 0 ? (
                               availableModels.map((m) => (
                                 <option key={m.id} value={m.id}>
@@ -519,8 +590,8 @@ export function CompanyManagerModal({
 
                         <button
                           type="button"
-                          onClick={() => void loadModelsForProvider(mProvider)}
-                          title="Refresh available models"
+                          onClick={() => void loadModelsForProvider(mProvider, true)}
+                          title="Force re-scan models"
                           disabled={loadingModels}
                           className="p-1 rounded border border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-cyan-400 disabled:opacity-50"
                         >

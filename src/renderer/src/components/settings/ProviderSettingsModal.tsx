@@ -14,7 +14,7 @@ const PROVIDERS: readonly { id: ProviderId; label: string; placeholder: string; 
   { id: 'openai', label: 'OpenAI', placeholder: 'sk-...', defaultUrl: 'https://openai.com/v1' },
   { id: 'gemini', label: 'Google Gemini', placeholder: 'AIzaSy...', defaultUrl: 'https://generativelanguage.googleapis.com' },
   { id: 'deepseek', label: 'DeepSeek', placeholder: 'sk-...', defaultUrl: 'https://api.deepseek.com/v1' },
-  { id: 'ollama', label: 'Ollama (Local)', placeholder: 'No key needed', defaultUrl: 'http://localhost:11434/v1' },
+  { id: 'ollama', label: 'Local (Ollama / LM Studio)', placeholder: 'No key needed', defaultUrl: 'http://localhost:11434/v1' },
   { id: 'openrouter', label: 'OpenRouter', placeholder: 'sk-or-...', defaultUrl: 'https://openrouter.ai/api/v1' }
 ]
 
