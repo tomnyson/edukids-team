@@ -39,7 +39,8 @@ export const COMPANY_CHANNELS = {
 export const PROVIDER_CHANNELS = {
   getAll: 'providers:get-all',
   set: 'providers:set',
-  testConnection: 'providers:test'
+  testConnection: 'providers:test',
+  listModels: 'providers:list-models'
 } as const
 
 export type IpcChannel =

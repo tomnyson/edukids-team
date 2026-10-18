@@ -3,6 +3,7 @@ import { getProviderConfig } from '../db/providers'
 import { runOpenAICompatible } from './openai-adapter'
 import { runAnthropic } from './anthropic-adapter'
 import { runGemini } from './gemini-adapter'
+import { runOpenCode } from './opencode-adapter'
 
 export async function dispatchLLM(
   request: LLMRequest,
@@ -13,6 +14,9 @@ export async function dispatchLLM(
   const baseUrl = config?.baseUrl ?? null
 
   switch (request.provider) {
+    case 'opencode':
+      return runOpenCode(request, callbacks)
+
     case 'openai':
     case 'xai':
     case 'deepseek':

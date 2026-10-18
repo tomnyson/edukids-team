@@ -13,10 +13,12 @@ import type {
   CreateCompanyInput,
   CreateConversationInput,
   Message,
+  ModelOption,
   OpenedFile,
   Project,
   ProjectPatch,
   ProviderConfig,
+  ProviderId,
   Result,
   StreamEvent,
   SystemInfo,
@@ -140,7 +142,9 @@ const api = {
     set: (config: ProviderConfig): Promise<Result<boolean>> =>
       ipcRenderer.invoke(PROVIDER_CHANNELS.set, config),
     testConnection: (config: ProviderConfig): Promise<Result<boolean>> =>
-      ipcRenderer.invoke(PROVIDER_CHANNELS.testConnection, config)
+      ipcRenderer.invoke(PROVIDER_CHANNELS.testConnection, config),
+    listModels: (provider: ProviderId): Promise<Result<readonly ModelOption[]>> =>
+      ipcRenderer.invoke(PROVIDER_CHANNELS.listModels, provider)
   }
 }
 

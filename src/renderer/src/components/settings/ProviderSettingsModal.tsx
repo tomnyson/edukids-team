@@ -8,9 +8,10 @@ interface ProviderSettingsModalProps {
 }
 
 const PROVIDERS: readonly { id: ProviderId; label: string; placeholder: string; defaultUrl?: string }[] = [
+  { id: 'opencode', label: 'OpenCode CLI (Free)', placeholder: 'No key needed (local CLI)', defaultUrl: '/opt/homebrew/bin/opencode' },
   { id: 'xai', label: 'xAI Grok', placeholder: 'xai-...', defaultUrl: 'https://api.x.ai/v1' },
   { id: 'anthropic', label: 'Anthropic Claude', placeholder: 'sk-ant-...', defaultUrl: 'https://api.anthropic.com/v1' },
-  { id: 'openai', label: 'OpenAI', placeholder: 'sk-...', defaultUrl: 'https://api.openai.com/v1' },
+  { id: 'openai', label: 'OpenAI', placeholder: 'sk-...', defaultUrl: 'https://openai.com/v1' },
   { id: 'gemini', label: 'Google Gemini', placeholder: 'AIzaSy...', defaultUrl: 'https://generativelanguage.googleapis.com' },
   { id: 'deepseek', label: 'DeepSeek', placeholder: 'sk-...', defaultUrl: 'https://api.deepseek.com/v1' },
   { id: 'ollama', label: 'Ollama (Local)', placeholder: 'No key needed', defaultUrl: 'http://localhost:11434/v1' },
@@ -19,6 +20,7 @@ const PROVIDERS: readonly { id: ProviderId; label: string; placeholder: string; 
 
 export function ProviderSettingsModal({ onClose }: ProviderSettingsModalProps): React.JSX.Element {
   const [configs, setConfigs] = useState<Record<ProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>>({
+    opencode: { apiKey: '', baseUrl: '', enabled: true },
     xai: { apiKey: '', baseUrl: '', enabled: true },
     anthropic: { apiKey: '', baseUrl: '', enabled: true },
     openai: { apiKey: '', baseUrl: '', enabled: true },
@@ -27,8 +29,9 @@ export function ProviderSettingsModal({ onClose }: ProviderSettingsModalProps): 
     ollama: { apiKey: '', baseUrl: 'http://localhost:11434/v1', enabled: true },
     openrouter: { apiKey: '', baseUrl: '', enabled: true }
   })
-  const [selectedProvider, setSelectedProvider] = useState<ProviderId>('xai')
+  const [selectedProvider, setSelectedProvider] = useState<ProviderId>('opencode')
   const [testStatus, setTestStatus] = useState<Record<ProviderId, 'idle' | 'testing' | 'success' | 'error'>>({
+    opencode: 'idle',
     xai: 'idle',
     anthropic: 'idle',
     openai: 'idle',
@@ -96,7 +99,7 @@ export function ProviderSettingsModal({ onClose }: ProviderSettingsModalProps): 
             Providers
           </div>
           {PROVIDERS.map((p) => {
-            const hasKey = Boolean(configs[p.id]?.apiKey) || p.id === 'ollama'
+            const hasKey = Boolean(configs[p.id]?.apiKey) || p.id === 'ollama' || p.id === 'opencode'
             const isSelected = p.id === selectedProvider
             return (
               <button
@@ -133,12 +136,26 @@ export function ProviderSettingsModal({ onClose }: ProviderSettingsModalProps): 
               )}
             </div>
 
+            {selectedProvider === 'opencode' && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-md text-xs text-emerald-300 space-y-1 font-mono">
+                <div className="font-semibold flex items-center gap-1.5">
+                  <span className="text-base">⚡</span> 100% Free AI CLI Models
+                </div>
+                <p className="text-[11px] text-zinc-400">
+                  OpenCode CLI provides completely free models (e.g. Mimo Flash Free, Nemotron Lightning Free, Step 5 Preview Free) with full reasoning traces (`Thinking:` blocks) and zero API keys needed.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-3 font-mono text-xs">
               <div>
-                <label className="block text-zinc-400 mb-1">API Key</label>
+                <label className="block text-zinc-400 mb-1">
+                  {selectedProvider === 'opencode' ? 'API Key (Not Required)' : 'API Key'}
+                </label>
                 <input
                   type="password"
                   value={current.apiKey}
+                  disabled={selectedProvider === 'opencode'}
                   onChange={(e) =>
                     setConfigs((prev) => ({
                       ...prev,
@@ -146,13 +163,14 @@ export function ProviderSettingsModal({ onClose }: ProviderSettingsModalProps): 
                     }))
                   }
                   placeholder={currentMeta?.placeholder}
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
 
               <div>
                 <label className="block text-zinc-400 mb-1">
-                  Custom Base URL <span className="text-zinc-500">(Optional)</span>
+                  {selectedProvider === 'opencode' ? 'Custom Binary / CLI Path' : 'Custom Base URL'}{' '}
+                  <span className="text-zinc-500">(Optional)</span>
                 </label>
                 <input
                   type="text"

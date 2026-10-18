@@ -7,12 +7,14 @@ import {
   Flame,
   Check,
   Bot,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react'
 import type {
   Company,
   CompanyMember,
   ExecutionMode,
+  ModelOption,
   ProviderId
 } from '@shared/types'
 import { Dialog } from '@renderer/components/ui/Dialog'
@@ -24,6 +26,38 @@ interface CompanyManagerModalProps {
 }
 
 const PRESET_TEMPLATES = [
+  {
+    name: '100% Free AI Crew (OpenCode)',
+    description: 'Fully free multi-agent team running via local OpenCode CLI with thinking blocks.',
+    mode: 'roundtable' as ExecutionMode,
+    funMode: true,
+    members: [
+      {
+        name: 'Mimo Flash (Free)',
+        role: 'Lead Architect',
+        provider: 'opencode' as ProviderId,
+        modelId: 'opencode/mimo-v2.6-flash-free',
+        systemPrompt: 'You are the Lead Architect. Provide fast, structured, and insightful technical design.',
+        avatarColor: '#00F0FF'
+      },
+      {
+        name: 'Step 5 Preview (Free)',
+        role: 'Senior Coder',
+        provider: 'opencode' as ProviderId,
+        modelId: 'opencode/step-5-preview-free',
+        systemPrompt: 'You are the Senior Coder. Write clean, reliable code with no bloat.',
+        avatarColor: '#FF7A00'
+      },
+      {
+        name: 'Nemotron Lightning (Free)',
+        role: 'QA & Security Critic',
+        provider: 'opencode' as ProviderId,
+        modelId: 'opencode/nemotron-3.5-lightning-free',
+        systemPrompt: 'You are the QA and Security Critic. Review designs and code for flaws and edge cases.',
+        avatarColor: '#10B981'
+      }
+    ]
+  },
   {
     name: 'AI Startup Executive Board',
     description: 'High-velocity tech leadership team with contrasting perspectives.',
@@ -107,11 +141,37 @@ export function CompanyManagerModal({
   const [isAddingMember, setIsAddingMember] = useState(false)
   const [mName, setMName] = useState('')
   const [mRole, setMRole] = useState('')
-  const [mProvider, setMProvider] = useState<ProviderId>('xai')
-  const [mModel, setMModel] = useState('grok-3')
+  const [mProvider, setMProvider] = useState<ProviderId>('opencode')
+  const [mModel, setMModel] = useState('')
   const [mPrompt, setMPrompt] = useState('')
   const [mColor, setMColor] = useState('#00F0FF')
+  const [availableModels, setAvailableModels] = useState<readonly ModelOption[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
+  const [isCustomModel, setIsCustomModel] = useState(false)
   const COLOR_OPTIONS = ['#00F0FF', '#D97706', '#10B981', '#8B5CF6', '#EC4899']
+
+  const loadModelsForProvider = async (provider: ProviderId): Promise<void> => {
+    setLoadingModels(true)
+    try {
+      const res = await window.api.providers.listModels(provider)
+      if (res.ok && res.data.length > 0) {
+        setAvailableModels(res.data)
+        if (!isCustomModel) {
+          setMModel(res.data[0].id)
+        }
+      } else {
+        setAvailableModels([])
+      }
+    } finally {
+      setLoadingModels(false)
+    }
+  }
+
+  useEffect(() => {
+    if (isAddingMember) {
+      void loadModelsForProvider(mProvider)
+    }
+  }, [isAddingMember, mProvider])
 
   const loadCompanies = async (): Promise<void> => {
     const res = await window.api.companies.list()
@@ -410,24 +470,76 @@ export function CompanyManagerModal({
                     <div className="grid grid-cols-2 gap-2">
                       <select
                         value={mProvider}
-                        onChange={(e) => setMProvider(e.target.value as ProviderId)}
+                        onChange={(e) => {
+                          const p = e.target.value as ProviderId
+                          setMProvider(p)
+                          setIsCustomModel(false)
+                        }}
                         className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
                       >
+                        <option value="opencode">🆓 OpenCode CLI (Free)</option>
                         <option value="xai">xAI Grok</option>
                         <option value="anthropic">Anthropic Claude</option>
                         <option value="openai">OpenAI</option>
                         <option value="gemini">Google Gemini</option>
                         <option value="deepseek">DeepSeek</option>
-                        <option value="ollama">Ollama</option>
+                        <option value="ollama">Ollama (Local)</option>
                         <option value="openrouter">OpenRouter</option>
                       </select>
-                      <input
-                        type="text"
-                        placeholder="Model ID (e.g. grok-3)"
-                        value={mModel}
-                        onChange={(e) => setMModel(e.target.value)}
-                        className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
-                      />
+
+                      <div className="flex items-center gap-1">
+                        {isCustomModel ? (
+                          <input
+                            type="text"
+                            placeholder="Custom Model ID"
+                            value={mModel}
+                            onChange={(e) => setMModel(e.target.value)}
+                            className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
+                          />
+                        ) : (
+                          <select
+                            value={mModel}
+                            onChange={(e) => setMModel(e.target.value)}
+                            disabled={loadingModels}
+                            className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100 disabled:opacity-50"
+                          >
+                            {loadingModels ? (
+                              <option>Loading models...</option>
+                            ) : availableModels.length > 0 ? (
+                              availableModels.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.free ? '🆓 ' : ''}{m.name}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="">No models found</option>
+                            )}
+                          </select>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => void loadModelsForProvider(mProvider)}
+                          title="Refresh available models"
+                          disabled={loadingModels}
+                          className="p-1 rounded border border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-cyan-400 disabled:opacity-50"
+                        >
+                          <RefreshCw className={`size-3.5 ${loadingModels ? 'animate-spin text-cyan-400' : ''}`} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomModel(!isCustomModel)}
+                          title={isCustomModel ? 'Pick from model list' : 'Enter custom model ID'}
+                          className={`px-1.5 py-1 rounded text-[10px] font-mono border ${
+                            isCustomModel
+                              ? 'border-cyan-500 bg-cyan-500/20 text-cyan-300'
+                              : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          {isCustomModel ? 'List' : 'Custom'}
+                        </button>
+                      </div>
                     </div>
                     <textarea
                       placeholder="System Prompt / Persona for this member..."

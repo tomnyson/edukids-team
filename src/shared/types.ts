@@ -169,6 +169,15 @@ export type ProviderId =
   | 'deepseek'
   | 'ollama'
   | 'openrouter'
+  | 'opencode'
+
+export interface ModelOption {
+  readonly id: string
+  readonly name: string
+  readonly free?: boolean
+  readonly reasoning?: boolean
+  readonly provider: ProviderId
+}
 
 export type ExecutionMode = 'roundtable' | 'pipeline' | 'single'
 

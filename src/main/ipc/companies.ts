@@ -8,7 +8,9 @@ import type {
   CompanyMessage,
   CompanyStreamEvent,
   CreateCompanyInput,
+  ModelOption,
   ProviderConfig,
+  ProviderId,
   Result,
   UpdateCompanyInput,
   UpdateMemberInput
@@ -24,9 +26,10 @@ import {
   updateCompany,
   updateCompanyMember
 } from '../db/companies'
-import { getAllProviderConfigs, setProviderConfig } from '../db/providers'
+import { getAllProviderConfigs, getProviderConfig, setProviderConfig } from '../db/providers'
 import { runCompanyOrchestration } from '../orchestrator'
 import { dispatchLLM } from '../providers/gateway'
+import { fetchModelsForProvider } from '../providers/model-fetcher'
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data })
 const fail = (error: AppError): Result<never> => ({ ok: false, error })
@@ -149,16 +152,38 @@ export function registerCompanyIpcHandlers(getWindow: () => BrowserWindow | null
     PROVIDER_CHANNELS.testConnection,
     guard(async (_event, config: ProviderConfig): Promise<Result<boolean>> => {
       setProviderConfig(config)
+      const testModelId =
+        config.id === 'opencode'
+          ? 'opencode/mimo-v2.6-flash-free'
+          : config.id === 'gemini'
+            ? 'gemini-2.0-flash'
+            : config.id === 'anthropic'
+              ? 'claude-3-5-haiku-20241022'
+              : 'gpt-4o-mini'
+
       await dispatchLLM(
         {
           provider: config.id,
-          modelId: config.id === 'gemini' ? 'gemini-2.0-flash' : config.id === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini',
+          modelId: testModelId,
           systemPrompt: 'Respond with OK',
           messages: [{ role: 'user', content: 'ping' }]
         },
         { onContentDelta: () => {} }
       )
       return ok(true)
+    })
+  )
+
+  ipcMain.handle(
+    PROVIDER_CHANNELS.listModels,
+    guard(async (_event, provider: ProviderId): Promise<Result<readonly ModelOption[]>> => {
+      const config = getProviderConfig(provider)
+      const models = await fetchModelsForProvider(
+        provider,
+        config?.apiKey ?? undefined,
+        config?.baseUrl ?? undefined
+      )
+      return ok(models)
     })
   )
 }
