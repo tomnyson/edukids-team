@@ -1,14 +1,16 @@
 import { useCallback, useMemo, useState } from 'react'
-import { FolderPlus, ListCollapse, PanelLeftClose, Plus, Search, Settings2 } from 'lucide-react'
-import type { Conversation, Project, ProjectPatch } from '@shared/types'
-import { ClaudeMark } from '@renderer/components/ui/ClaudeMark'
+import { FolderPlus, ListCollapse, PanelLeftClose, Plus, Search } from 'lucide-react'
+import type { Company, Conversation, Project, ProjectPatch } from '@shared/types'
+import { AppMark } from '@renderer/components/ui/AppMark'
 import { ProjectGroup } from './ProjectGroup'
+import { SidebarFooter } from './SidebarFooter'
 
 interface SidebarProps {
   readonly conversations: readonly Conversation[]
   readonly projects: readonly Project[]
   readonly activeId: number | null
   readonly claudeBinary: string | null | undefined
+  readonly company: Company | null
   readonly onSelect: (id: number) => void
   readonly onCreate: (projectId: number | null) => void
   readonly onDelete: (id: number) => void
@@ -17,6 +19,9 @@ interface SidebarProps {
   readonly onRemoveProject: (id: number) => void
   readonly onCollapse: () => void
   readonly onOpenSettings: () => void
+  readonly onOpenCompany: () => void
+  readonly onOpenProviders: () => void
+  readonly onSoloMode: () => void
 }
 
 interface Group {
@@ -60,6 +65,7 @@ export function Sidebar({
   projects,
   activeId,
   claudeBinary,
+  company,
   onSelect,
   onCreate,
   onDelete,
@@ -67,10 +73,12 @@ export function Sidebar({
   onUpdateProject,
   onRemoveProject,
   onCollapse,
-  onOpenSettings
+  onOpenSettings,
+  onOpenCompany,
+  onOpenProviders,
+  onSoloMode
 }: SidebarProps): React.JSX.Element {
   const [query, setQuery] = useState('')
-  const [searching, setSearching] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(new Set())
 
   const groups = useMemo(() => {
@@ -99,52 +107,57 @@ export function Sidebar({
     >
       {/* Sits beside the macOS traffic lights, and doubles as the drag region. */}
       <div
-        className="flex h-12 shrink-0 items-center gap-1.5 pr-2 pl-[4.75rem]"
+        className="flex h-12 shrink-0 items-center gap-2 pr-2 pl-[4.75rem]"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <ClaudeMark className="size-4 shrink-0 text-accent" />
-        <span className="text-[0.8125rem] font-semibold tracking-tight text-ink">claude</span>
-        <span className="rounded-[3px] bg-raised px-1 py-px font-mono text-[0.5625rem] tracking-[0.1em] text-muted uppercase">
-          gui
+        <AppMark className="size-5 shrink-0 text-ink" />
+        <span className="text-[length:var(--text-ui)] font-semibold tracking-tight text-ink">
+          Claude GUI
         </span>
         <button
           type="button"
           onClick={onCollapse}
           title="Hide sidebar"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-faint transition-colors duration-[var(--duration-fast)] hover:bg-surface hover:text-ink"
+          className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-full text-faint transition-colors duration-[var(--duration-fast)] hover:bg-surface hover:text-ink"
         >
           <PanelLeftClose aria-hidden className="size-4" />
           <span className="sr-only">Hide sidebar</span>
         </button>
       </div>
 
-      <div className="px-3 pb-3">
+      <div className="flex items-center gap-2 px-3 pt-1 pb-3">
+        <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[var(--radius-pill)] bg-surface px-3 text-faint transition-shadow duration-[var(--duration-fast)] focus-within:text-muted focus-within:ring-1 focus-within:ring-line-strong">
+          <Search aria-hidden className="size-4 shrink-0" />
+          <span className="sr-only">Search conversations</span>
+          <input
+            id="history-search"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setQuery('')
+            }}
+            placeholder="Search"
+            className="selectable w-full bg-transparent text-[length:var(--text-ui)] text-ink placeholder:text-faint focus-visible:outline-none [&::-webkit-search-cancel-button]:appearance-none"
+          />
+        </label>
         <button
           type="button"
           onClick={() => onCreate(null)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface py-1.5 text-[length:var(--text-ui)] font-medium text-muted transition-all duration-[var(--duration-fast)] hover:border-accent-dim hover:bg-raised hover:text-ink active:scale-[0.99]"
+          title="New chat"
+          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-canvas transition-all duration-[var(--duration-fast)] hover:bg-accent-bright active:scale-95"
         >
-          <Plus aria-hidden className="size-3.5" />
-          New chat
+          <Plus aria-hidden className="size-[1.125rem]" strokeWidth={2.25} />
+          <span className="sr-only">New chat</span>
         </button>
       </div>
 
-      <div className="flex h-7 items-center gap-1 px-3">
-        <h2 className="text-[length:var(--text-micro)] text-faint">Projects</h2>
+      <div className="flex h-7 items-center gap-1 px-4">
+        <h2 className="text-[length:var(--text-micro)] font-medium text-faint">Projects</h2>
         <div className="ml-auto flex items-center gap-0.5">
           <RailAction label="Add project folder" onClick={onAddProject}>
             <FolderPlus aria-hidden className="size-3.5" />
-          </RailAction>
-          <RailAction
-            label={searching ? 'Close search' : 'Search conversations'}
-            active={searching}
-            onClick={() => {
-              setSearching((open) => !open)
-              if (searching) setQuery('')
-            }}
-          >
-            <Search aria-hidden className="size-3.5" />
           </RailAction>
           <RailAction
             label={allCollapsed ? 'Expand all projects' : 'Collapse all projects'}
@@ -157,27 +170,10 @@ export function Sidebar({
         </div>
       </div>
 
-      {searching ? (
-        <div className="px-3 pt-1.5">
-          <label htmlFor="history-search" className="sr-only">
-            Search conversations
-          </label>
-          <input
-            id="history-search"
-            type="search"
-            autoFocus
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter by title"
-            className="selectable w-full rounded-[var(--radius-md)] border border-line bg-canvas px-2.5 py-1.5 font-mono text-[length:var(--text-micro)] text-ink placeholder:text-faint focus:border-line-strong [&::-webkit-search-cancel-button]:appearance-none"
-          />
-        </div>
-      ) : null}
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-1.5 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-2">
         {groups.length === 0 ? (
           <p className="px-2 py-4 text-[length:var(--text-micro)] text-faint">
-            {query ? 'Nothing matches that.' : 'No projects yet — add a folder to start one.'}
+            {query ? 'Nothing matches that.' : 'No projects yet. Add a folder to start one.'}
           </p>
         ) : (
           groups.map((group) => (
@@ -198,53 +194,31 @@ export function Sidebar({
         )}
       </div>
 
-      <footer className="flex items-center gap-2 px-3 py-2.5">
-        <p
-          title={claudeBinary ?? undefined}
-          className="flex min-w-0 flex-1 items-center gap-2 font-mono text-[length:var(--text-micro)] tracking-wide text-faint"
-        >
-          <span
-            aria-hidden
-            className={`size-1.5 rounded-full ${claudeBinary === null ? 'bg-danger' : claudeBinary ? 'bg-ok' : 'bg-faint'}`}
-          />
-          {claudeBinary === undefined
-            ? 'checking cli…'
-            : claudeBinary === null
-              ? 'cli not found'
-              : 'cli ready'}
-        </p>
-        <button
-          type="button"
-          id="open-settings"
-          onClick={onOpenSettings}
-          title="Settings"
-          className="flex size-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-faint transition-colors duration-[var(--duration-fast)] hover:bg-surface hover:text-ink"
-        >
-          <Settings2 aria-hidden className="size-4" />
-          <span className="sr-only">Settings</span>
-        </button>
-      </footer>
+      <SidebarFooter
+        company={company}
+        claudeBinary={claudeBinary}
+        onOpenCompany={onOpenCompany}
+        onOpenProviders={onOpenProviders}
+        onOpenSettings={onOpenSettings}
+        onSoloMode={onSoloMode}
+      />
     </nav>
   )
 }
 
 interface RailActionProps {
   readonly label: string
-  readonly active?: boolean
   readonly onClick: () => void
   readonly children: React.ReactNode
 }
 
-function RailAction({ label, active, onClick, children }: RailActionProps): React.JSX.Element {
+function RailAction({ label, onClick, children }: RailActionProps): React.JSX.Element {
   return (
     <button
       type="button"
       onClick={onClick}
       title={label}
-      aria-pressed={active}
-      className={`flex size-6 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-[var(--duration-fast)] hover:bg-surface hover:text-ink ${
-        active ? 'text-accent' : 'text-faint'
-      }`}
+      className="flex size-6 items-center justify-center rounded-full text-faint transition-colors duration-[var(--duration-fast)] hover:bg-surface hover:text-ink"
     >
       {children}
       <span className="sr-only">{label}</span>

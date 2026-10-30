@@ -71,7 +71,7 @@ export function ProjectGroup({
           onClick={onToggle}
           title={project ? project.path : 'Chats that belong to no project'}
           aria-expanded={!collapsed}
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 text-left transition-colors duration-[var(--duration-fast)] hover:bg-surface"
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-pill)] px-2 py-1 text-left transition-colors duration-[var(--duration-fast)] hover:bg-surface"
         >
           {collapsed ? (
             <ChevronRight aria-hidden className="size-3 shrink-0 text-faint" />
@@ -79,7 +79,7 @@ export function ProjectGroup({
             <ChevronDown aria-hidden className="size-3 shrink-0 text-faint" />
           )}
           {project ? (
-            <Folder aria-hidden className="size-3.5 shrink-0 text-accent" />
+            <Folder aria-hidden className="size-3.5 shrink-0 text-muted" />
           ) : (
             <FolderOpen aria-hidden className="size-3.5 shrink-0 text-faint" />
           )}
@@ -120,7 +120,7 @@ export function ProjectGroup({
       ) : null}
 
       {collapsed ? null : (
-        <ul className="mt-0.5 pl-3">
+        <ul className="mt-0.5 space-y-0.5">
           {items.map((conversation) => (
             <ConversationRow
               key={conversation.id}
@@ -131,7 +131,7 @@ export function ProjectGroup({
             />
           ))}
           {items.length === 0 ? (
-            <li className="px-2 py-1.5 text-[length:var(--text-micro)] text-faint">
+            <li className="px-3 py-1.5 text-[length:var(--text-micro)] text-faint">
               No chats yet.
             </li>
           ) : null}

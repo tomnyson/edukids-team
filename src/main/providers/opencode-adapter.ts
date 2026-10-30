@@ -1,13 +1,13 @@
 import { spawn } from 'child_process'
 import type { LLMRequest, LLMCallbacks, LLMRunResult } from './types'
-import { resolveOpencodeBinary } from './opencode-environment'
+import { resolveCliBinary } from './cli-binary'
 import { getEnrichedPath } from '../claude/environment'
 
 export async function runOpenCode(
   request: LLMRequest,
   callbacks: LLMCallbacks
 ): Promise<LLMRunResult> {
-  const binary = await resolveOpencodeBinary()
+  const binary = await resolveCliBinary('opencode')
   if (!binary) {
     throw new Error(
       'Could not find the `opencode` executable. Ensure opencode is installed on your machine (e.g., via brew or npm i -g opencode-ai).'

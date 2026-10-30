@@ -1,7 +1,7 @@
 /**
- * Generates the app icon from the same 12-spoke mark the UI draws
- * (src/renderer/src/components/ui/ClaudeMark.tsx), so the packaged app, the
- * dock, and the empty state all wear one logo.
+ * Generates the app icon from the same bubble face the UI draws
+ * (src/renderer/src/components/ui/BotFace.tsx), so the packaged app, the
+ * dock, and the rail all wear one logo.
  *
  * Electron does the rasterising because it is the only renderer this repo
  * already depends on; sips and iconutil ship with macOS.
@@ -18,24 +18,32 @@ const ROOT = join(__dirname, '..')
 const BUILD = join(ROOT, 'build')
 const RESOURCES = join(ROOT, 'resources')
 
-/** Claude clay, matching --c-accent in tokens.css. */
-const CLAY_TOP = '#E08A64'
-const CLAY_BOTTOM = '#C25F3C'
-const CREAM = '#FCFAF7'
+/** Neutral ink, matching the app's zero-chroma surfaces. */
+const INK_TOP = '#2A2A2A'
+const INK_BOTTOM = '#030303'
+const FACE = '#FFFFFF'
 
-/** Spoke lengths in a 24-unit box — the mark's signature uneven burst. */
-const SPOKES = [10, 8.5, 9.4, 8.1, 10, 8.7, 9.5, 8.3, 10, 8.5, 9.4, 8.1]
+/* Mirrors FaceGlyph in BotFace.tsx: the bubble on a 24-unit grid, pill eyes
+ * glancing right (glance 1). Keep the two in step. */
+const BUBBLE =
+  'M10 5H14A6 6 0 0 1 20 11V12A6 6 0 0 1 14 18H10.6L7.4 20.6C6.9 21 6.2 20.6 6.3 20L6.7 17.2A6 6 0 0 1 4 12V11A6 6 0 0 1 10 5Z'
+const EYES_X = [10.4, 15.6]
+const EYES_MID_X = (EYES_X[0] + EYES_X[1]) / 2
+const EYE_Y = 11.4
+const EYE_WIDTH = 2.3
+const EYE_HEIGHT = 4.4
+
+/** Optical centre of the glyph: the body's middle, nudged down for the tail. */
+const GLYPH_CENTER = { x: 12, y: 12.6 }
 
 /**
- * Below ~48px twelve spokes average into a smudge, so the small slots get eight
- * even ones, drawn heavier and slightly larger. Same silhouette, fewer strokes.
+ * Below ~48px the eyes close up into one blot, so the small slots draw the face
+ * larger with wider-set, bigger eyes. Same character, readable at 16px.
  */
-const SPOKES_SMALL = [9.7, 9.7, 9.7, 9.7, 9.7, 9.7, 9.7, 9.7]
-
 const VARIANTS = {
-  full: { spokes: SPOKES, strokeScale: 1, unit: 22.5, hole: 1.95 },
-  medium: { spokes: SPOKES, strokeScale: 1.15, unit: 23, hole: 2 },
-  simple: { spokes: SPOKES_SMALL, strokeScale: 1.7, unit: 24.5, hole: 2.15 }
+  full: { scale: 28, eyeScale: 1 },
+  medium: { scale: 29.5, eyeScale: 1.1 },
+  simple: { scale: 32, eyeScale: 1.25 }
 }
 
 /**
@@ -56,54 +64,52 @@ function squirclePath(center, half, exponent = 5, steps = 720) {
   return `M${points.join('L')}Z`
 }
 
-/* Spokes run to the centre and a mask punches the hole, so its edge is a true
- * circle rather than the scalloped ring twelve round caps would leave. */
-function spokeLines(center, { spokes, unit, strokeScale }) {
-  const step = 360 / spokes.length
-  return spokes
-    .map((length, index) => {
-      const angle = (index * step * Math.PI) / 180
-      const sin = Math.sin(angle)
-      const cos = Math.cos(angle)
-      const x1 = center
-      const y1 = center
-      const x2 = center + sin * length * unit
-      const y2 = center - cos * length * unit
-      return `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke-width="${(2.1 * unit * strokeScale).toFixed(2)}" />`
-    })
+/* Eyes are punched out of the bubble, as in the UI, so the tile shows through. */
+function eyeHoles(eyeScale) {
+  const width = EYE_WIDTH * eyeScale
+  const height = EYE_HEIGHT * eyeScale
+  // Spread the centres with the eyes, or bigger eyes would close the gap between them.
+  const centers = EYES_X.map((x) => EYES_MID_X + (x - EYES_MID_X) * eyeScale)
+  return centers
+    .map(
+      (x) =>
+        `<rect x="${(x - width / 2).toFixed(3)}" y="${(EYE_Y - height / 2).toFixed(3)}" width="${width.toFixed(3)}" height="${height.toFixed(3)}" rx="${(width / 2).toFixed(3)}" fill="#000000" />`
+    )
     .join('')
 }
 
-function iconMarkup(variant) {
+function iconMarkup({ scale, eyeScale }) {
   const size = 1024
   const center = size / 2
   const tile = squirclePath(center, 412)
-  const { unit, hole } = variant
+  const glyph = `translate(${(center - GLYPH_CENTER.x * scale).toFixed(2)} ${(center - GLYPH_CENTER.y * scale).toFixed(2)}) scale(${scale})`
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
   <defs>
-    <linearGradient id="clay" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${CLAY_TOP}" />
-      <stop offset="1" stop-color="${CLAY_BOTTOM}" />
+    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${INK_TOP}" />
+      <stop offset="1" stop-color="${INK_BOTTOM}" />
     </linearGradient>
     <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.20" />
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.10" />
       <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0" />
     </linearGradient>
     <filter id="cast" x="-25%" y="-25%" width="150%" height="150%">
-      <feDropShadow dx="0" dy="10" stdDeviation="11" flood-color="#000000" flood-opacity="0.22" />
+      <feDropShadow dx="0" dy="10" stdDeviation="11" flood-color="#000000" flood-opacity="0.28" />
     </filter>
-    <mask id="hole">
-      <rect x="0" y="0" width="${size}" height="${size}" fill="#FFFFFF" />
-      <circle cx="${center}" cy="${center}" r="${(hole * unit).toFixed(2)}" fill="#000000" />
+    <mask id="face">
+      <g transform="${glyph}">
+        <path d="${BUBBLE}" fill="#FFFFFF" />
+        ${eyeHoles(eyeScale)}
+      </g>
     </mask>
   </defs>
   <g filter="url(#cast)">
-    <path d="${tile}" fill="url(#clay)" />
+    <path d="${tile}" fill="url(#ink)" />
     <path d="${tile}" fill="url(#sheen)" />
-    <path d="${tile}" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2.5" />
+    <path d="${tile}" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="2.5" />
   </g>
-  <g stroke="${CREAM}" stroke-linecap="round" mask="url(#hole)">${spokeLines(center, variant)}</g>
+  <rect x="0" y="0" width="${size}" height="${size}" fill="${FACE}" mask="url(#face)" />
 </svg>`
 }
 

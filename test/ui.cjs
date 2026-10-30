@@ -81,11 +81,11 @@ async function run() {
 
   record(
     'empty state rendered',
-    await waitFor(window, `document.body.innerText.includes('Start a session')`, 5000)
+    await waitFor(window, `document.body.innerText.includes('What should we work on?')`, 5000)
   )
   record(
     'cli status shown',
-    await waitFor(window, `document.body.innerText.includes('cli ready')`, 5000)
+    await waitFor(window, `document.body.innerText.includes('CLI ready')`, 5000)
   )
   await shoot(window, 'ui-1-empty')
 
@@ -305,7 +305,7 @@ async function run() {
   )
   record(
     'new chat resets transcript',
-    await waitFor(window, `document.body.innerText.includes('Start a session')`, 8000)
+    await waitFor(window, `document.body.innerText.includes('What should we work on?')`, 8000)
   )
   await shoot(window, 'ui-5-new-chat')
 

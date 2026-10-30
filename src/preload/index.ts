@@ -143,8 +143,8 @@ const api = {
       ipcRenderer.invoke(PROVIDER_CHANNELS.set, config),
     testConnection: (config: ProviderConfig): Promise<Result<boolean>> =>
       ipcRenderer.invoke(PROVIDER_CHANNELS.testConnection, config),
-    listModels: (provider: ProviderId): Promise<Result<readonly ModelOption[]>> =>
-      ipcRenderer.invoke(PROVIDER_CHANNELS.listModels, provider)
+    listModels: (provider: ProviderId, refresh = false): Promise<Result<readonly ModelOption[]>> =>
+      ipcRenderer.invoke(PROVIDER_CHANNELS.listModels, provider, refresh)
   }
 }
 

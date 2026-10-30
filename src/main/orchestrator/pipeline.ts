@@ -3,6 +3,7 @@ import { insertCompanyMessage, listCompanyMessages } from '../db/companies'
 import { dispatchLLM } from '../providers/gateway'
 import type { ChatMessage } from '../providers/types'
 import type { OrchestrationOptions } from './roundtable'
+import { memberErrorMessage } from './member-error'
 
 export async function runPipeline(options: OrchestrationOptions): Promise<void> {
   const { company, conversationId, userPrompt, signal, onEvent } = options
@@ -99,7 +100,11 @@ export async function runPipeline(options: OrchestrationOptions): Promise<void> 
           })
         }
       }
-    )
+    ).catch((error: unknown) => {
+      // A user stop is not a member failure; keep the original cancel error
+      if (signal.aborted) throw error
+      throw new Error(memberErrorMessage(member, error), { cause: error })
+    })
 
     const finalContent = result.text || streamedContent
 

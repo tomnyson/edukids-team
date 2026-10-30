@@ -1,5 +1,5 @@
-import React from 'react'
-import { Sparkles, StopCircle } from 'lucide-react'
+import { Square } from 'lucide-react'
+import { BotAvatar } from '@renderer/components/ui/BotFace'
 
 interface ActiveSpeakerBarProps {
   readonly activeSpeaker: string | null
@@ -7,6 +7,7 @@ interface ActiveSpeakerBarProps {
   readonly onStop?: () => void
 }
 
+/** Floats above the composer while a bot holds the floor, with a way to cut it off. */
 export function ActiveSpeakerBar({
   activeSpeaker,
   phaseDescription,
@@ -15,32 +16,32 @@ export function ActiveSpeakerBar({
   if (!activeSpeaker) return null
 
   return (
-    <div className="sticky bottom-3 z-20 mx-auto flex max-w-lg items-center justify-between gap-3 rounded-full border border-cyan-500/40 bg-zinc-950/90 px-4 py-2 shadow-lg shadow-cyan-950/40 backdrop-blur-md">
-      <div className="flex min-w-0 items-center gap-2.5 font-mono text-xs">
-        <span className="relative flex size-2 shrink-0">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
-          <span className="relative inline-flex size-2 rounded-full bg-cyan-500" />
+    <div
+      role="status"
+      className="sticky bottom-3 z-20 mx-auto mb-2 flex max-w-lg items-center justify-between gap-3 rounded-[var(--radius-pill)] border border-line-strong bg-surface/90 py-1.5 pr-1.5 pl-2 shadow-[0_12px_32px_-14px_var(--c-shadow)] backdrop-blur-md"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="relative shrink-0">
+          <BotAvatar seed={activeSpeaker} size="xs" />
+          <span className="absolute -right-0.5 -bottom-0.5 flex size-2">
+            <span className="absolute inline-flex size-full rounded-full bg-ok opacity-75 motion-safe:animate-ping" />
+            <span className="relative inline-flex size-2 rounded-full bg-ok ring-2 ring-surface" />
+          </span>
         </span>
 
-        <Sparkles aria-hidden className="size-3.5 shrink-0 text-cyan-400" />
-
-        <div className="truncate text-zinc-200">
-          <span className="font-semibold text-cyan-300">{activeSpeaker}</span>
-          {phaseDescription ? (
-            <span className="ml-1.5 text-zinc-400">— {phaseDescription}</span>
-          ) : (
-            <span className="ml-1.5 text-zinc-400">is reasoning...</span>
-          )}
-        </div>
+        <p className="truncate text-[length:var(--text-ui)] text-muted">
+          <span className="font-semibold text-ink">{activeSpeaker}</span>{' '}
+          {phaseDescription ?? 'is thinking…'}
+        </p>
       </div>
 
       {onStop ? (
         <button
           type="button"
           onClick={onStop}
-          className="flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] font-medium text-red-400 transition-colors hover:bg-red-500/20"
+          className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-pill)] border border-line px-3 py-1 text-[length:var(--text-micro)] font-medium text-muted transition-colors duration-[var(--duration-fast)] hover:border-danger hover:text-danger"
         >
-          <StopCircle aria-hidden className="size-3" />
+          <Square aria-hidden className="size-2.5 fill-current" />
           Stop
         </button>
       ) : null}

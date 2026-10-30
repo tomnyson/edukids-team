@@ -4,6 +4,10 @@ import { runOpenAICompatible } from './openai-adapter'
 import { runAnthropic } from './anthropic-adapter'
 import { runGemini } from './gemini-adapter'
 import { runOpenCode } from './opencode-adapter'
+import { runAgy } from './agy-adapter'
+import { runCodex } from './codex-adapter'
+import { resolveCliBinary } from './cli-binary'
+import { resolveEffectiveApiKey } from './model-fetcher'
 
 export async function dispatchLLM(
   request: LLMRequest,
@@ -17,7 +21,19 @@ export async function dispatchLLM(
     case 'opencode':
       return runOpenCode(request, callbacks)
 
-    case 'openai':
+    case 'openai': {
+      // Same key rule as the model picker, so listed model IDs match the backend
+      const openaiKey = resolveEffectiveApiKey('openai', apiKey ?? undefined)
+      if (openaiKey) return runOpenAICompatible(openaiKey, baseUrl, request, callbacks)
+
+      const codexBinary = await resolveCliBinary('codex')
+      if (codexBinary) return runCodex(codexBinary, request, callbacks)
+
+      throw new Error(
+        'OpenAI needs an API key in Provider Settings, or the Codex CLI (`codex`) installed and signed in.'
+      )
+    }
+
     case 'xai':
     case 'deepseek':
     case 'ollama':
@@ -27,11 +43,18 @@ export async function dispatchLLM(
     case 'anthropic':
       return runAnthropic(apiKey, baseUrl, request, callbacks)
 
-    case 'gemini':
-      if (!apiKey) {
-        throw new Error('Google Gemini API key is not configured in Provider Settings.')
-      }
-      return runGemini(apiKey, request, callbacks)
+    case 'gemini': {
+      // Same key rule as the model picker, so listed model IDs match the backend
+      const geminiKey = resolveEffectiveApiKey('gemini', apiKey ?? undefined)
+      if (geminiKey) return runGemini(geminiKey, request, callbacks)
+
+      const agyBinary = await resolveCliBinary('agy')
+      if (agyBinary) return runAgy(agyBinary, request, callbacks)
+
+      throw new Error(
+        'Google Gemini needs an API key in Provider Settings, or the Antigravity CLI (`agy`) installed and signed in.'
+      )
+    }
 
     default:
       throw new Error(`Unsupported provider: ${request.provider}`)

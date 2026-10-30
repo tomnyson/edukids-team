@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Briefcase, KeyRound, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Company, SystemInfo } from '@shared/types'
 import { useConversations } from './hooks/useConversations'
 import { useProjects } from './hooks/useProjects'
@@ -24,15 +23,19 @@ export function App(): React.JSX.Element {
   const [companyModalOpen, setCompanyModalOpen] = useState(false)
   const [providerModalOpen, setProviderModalOpen] = useState(false)
 
+  // The first team is picked for the user once; after that "Solo" has to stick.
+  const pickedFirstCompany = useRef(false)
+
   const reloadCompanies = useCallback(async () => {
     const res = await window.api.companies.list()
     if (res.ok) {
       setCompanies(res.data)
-      if (res.data.length > 0 && activeCompanyId === null) {
-        setActiveCompanyId(res.data[0].id)
+      if (res.data.length > 0 && !pickedFirstCompany.current) {
+        pickedFirstCompany.current = true
+        setActiveCompanyId((current) => current ?? res.data[0].id)
       }
     }
-  }, [activeCompanyId])
+  }, [])
 
   useEffect(() => {
     void window.api.systemInfo().then((result) => setSystem(result.ok ? result.data : null))
@@ -75,6 +78,7 @@ export function App(): React.JSX.Element {
           projects={projects.projects}
           activeId={activeId}
           claudeBinary={claudeBinary}
+          company={activeCompany}
           onSelect={select}
           onCreate={(projectId) => void create(projectId)}
           onDelete={(id) => void remove(id)}
@@ -85,63 +89,13 @@ export function App(): React.JSX.Element {
           }}
           onCollapse={() => setRailHidden(true)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenCompany={() => setCompanyModalOpen(true)}
+          onOpenProviders={() => setProviderModalOpen(true)}
+          onSoloMode={() => setActiveCompanyId(null)}
         />
       )}
 
       <main className="flex min-w-0 flex-1 flex-col">
-        {/* Top Company Navigation Bar */}
-        <div className="flex h-11 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-950/70 px-4 font-mono text-xs">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setCompanyModalOpen(true)}
-              className="flex items-center gap-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-cyan-300 hover:bg-cyan-500/20 transition-colors"
-            >
-              <Briefcase className="size-3.5 text-cyan-400" />
-              <span className="font-semibold">
-                {activeCompany ? activeCompany.name : 'Select Company'}
-              </span>
-            </button>
-
-            {activeCompany && (
-              <span className="rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400">
-                {activeCompany.members?.length ?? 0} models
-              </span>
-            )}
-
-            {activeCompany && (
-              <button
-                type="button"
-                onClick={() => setActiveCompanyId(null)}
-                className="text-[11px] text-zinc-500 hover:text-zinc-300 underline ml-1"
-                title="Switch to solo Claude mode"
-              >
-                Solo mode
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setProviderModalOpen(true)}
-              className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-            >
-              <KeyRound className="size-3.5 text-amber-400" />
-              <span>Providers & Keys</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setCompanyModalOpen(true)}
-              className="flex items-center gap-1 rounded-md bg-cyan-500 px-2.5 py-1 font-semibold text-black hover:bg-cyan-400 transition-colors"
-            >
-              <Sparkles className="size-3" />
-              <span>Manage Team</span>
-            </button>
-          </div>
-        </div>
-
         {error && !dismissed ? (
           <div className="px-6 pt-4">
             <ErrorNotice
@@ -161,6 +115,7 @@ export function App(): React.JSX.Element {
           company={activeCompany}
           onToggleFunMode={handleToggleFunMode}
           onShowRail={() => setRailHidden(false)}
+          onOpenCompany={() => setCompanyModalOpen(true)}
           onConversationChanged={onConversationChanged}
         />
       </main>

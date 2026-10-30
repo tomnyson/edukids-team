@@ -3,9 +3,13 @@ import { promisify } from 'util'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { app } from 'electron'
 import type { ModelOption, ProviderId } from '@shared/types'
-import { resolveOpencodeBinary } from './opencode-environment'
+import { resolveCliBinary } from './cli-binary'
 import { getEnrichedPath } from '../claude/environment'
+import { getCatalogModels, rankByCatalog, type CatalogProvider } from './model-catalog'
+import { parseAgyGeminiModels } from './agy-stream'
+import { parseCodexModels } from './codex-stream'
 
 const execFileAsync = promisify(execFile)
 
@@ -21,36 +25,36 @@ export const PRESET_MODELS: Record<ProviderId, readonly ModelOption[]> = {
     { id: 'opencode/space-bunny-free', name: 'Space Bunny Free', free: true, reasoning: false, provider: 'opencode' }
   ],
   xai: [
-    { id: 'grok-3', name: 'Grok 3 (Deep Thinking)', free: false, reasoning: true, provider: 'xai' },
-    { id: 'grok-3-mini', name: 'Grok 3 Mini (Fast Thinking)', free: false, reasoning: true, provider: 'xai' },
-    { id: 'grok-2-1212', name: 'Grok 2 (State of the Art)', free: false, reasoning: false, provider: 'xai' },
-    { id: 'grok-2-vision-1212', name: 'Grok 2 Vision', free: false, reasoning: false, provider: 'xai' },
-    { id: 'grok-beta', name: 'Grok Beta', free: false, reasoning: false, provider: 'xai' }
+    { id: 'grok-4.7', name: 'Grok 4.7', free: false, reasoning: true, provider: 'xai' },
+    { id: 'grok-4.6', name: 'Grok 4.6', free: false, reasoning: true, provider: 'xai' },
+    { id: 'grok-4.5', name: 'Grok 4.5', free: false, reasoning: true, provider: 'xai' },
+    { id: 'grok-build-0.1', name: 'Grok Build 0.1', free: false, reasoning: true, provider: 'xai' }
   ],
   anthropic: [
-    { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet (Hybrid Thinking)', free: false, reasoning: true, provider: 'anthropic' },
-    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet v2', free: false, reasoning: false, provider: 'anthropic' },
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', free: false, reasoning: false, provider: 'anthropic' },
-    { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', free: false, reasoning: false, provider: 'anthropic' }
+    { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', free: false, reasoning: true, provider: 'anthropic' },
+    { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', free: false, reasoning: true, provider: 'anthropic' },
+    { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', free: false, reasoning: true, provider: 'anthropic' },
+    { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', free: false, reasoning: true, provider: 'anthropic' },
+    { id: 'claude-opus-5', name: 'Claude Opus 5', free: false, reasoning: true, provider: 'anthropic' }
   ],
   deepseek: [
-    { id: 'deepseek-reasoner', name: 'DeepSeek R1 (Reasoning CoT)', free: false, reasoning: true, provider: 'deepseek' },
-    { id: 'deepseek-chat', name: 'DeepSeek V3 (Chat)', free: false, reasoning: false, provider: 'deepseek' }
+    { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', free: false, reasoning: true, provider: 'deepseek' },
+    { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', free: false, reasoning: true, provider: 'deepseek' }
   ],
   openai: [
-    { id: 'gpt-4o', name: 'GPT-4o (Omni Flagship)', free: false, reasoning: false, provider: 'openai' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Fast)', free: false, reasoning: false, provider: 'openai' },
-    { id: 'o3-mini', name: 'o3-mini (High Reasoning)', free: false, reasoning: true, provider: 'openai' },
-    { id: 'o1', name: 'o1 (Deep Reasoning)', free: false, reasoning: true, provider: 'openai' },
-    { id: 'o1-mini', name: 'o1-mini', free: false, reasoning: true, provider: 'openai' },
-    { id: 'chatgpt-4o-latest', name: 'ChatGPT-4o Latest', free: false, reasoning: false, provider: 'openai' }
+    { id: 'gpt-6.1-terra', name: 'GPT-6.1 Terra', free: false, reasoning: true, provider: 'openai' },
+    { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', free: false, reasoning: true, provider: 'openai' },
+    { id: 'gpt-6-sol', name: 'GPT-6 Sol', free: false, reasoning: true, provider: 'openai' },
+    { id: 'gpt-6-luna', name: 'GPT-6 Luna', free: false, reasoning: true, provider: 'openai' },
+    { id: 'gpt-6-astra', name: 'GPT-6 Astra', free: false, reasoning: true, provider: 'openai' },
+    { id: 'gpt-5.6', name: 'GPT-5.6', free: false, reasoning: true, provider: 'openai' }
   ],
   gemini: [
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Next-Gen)', free: false, reasoning: false, provider: 'gemini' },
-    { id: 'gemini-2.0-flash-thinking-exp-01-21', name: 'Gemini 2.0 Flash Thinking', free: false, reasoning: true, provider: 'gemini' },
-    { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro Experimental', free: false, reasoning: true, provider: 'gemini' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', free: false, reasoning: false, provider: 'gemini' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', free: false, reasoning: false, provider: 'gemini' }
+    { id: 'gemini-4-argon', name: 'Gemini 4 Argon', free: false, reasoning: true, provider: 'gemini' },
+    { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', free: false, reasoning: true, provider: 'gemini' },
+    { id: 'gemini-flash-latest', name: 'Gemini Flash Latest', free: false, reasoning: true, provider: 'gemini' },
+    { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', free: false, reasoning: true, provider: 'gemini' },
+    { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', free: false, reasoning: true, provider: 'gemini' }
   ],
   ollama: [
     { id: 'llama3.2', name: 'Llama 3.2 (Local)', free: true, reasoning: false, provider: 'ollama' },
@@ -59,16 +63,18 @@ export const PRESET_MODELS: Record<ProviderId, readonly ModelOption[]> = {
     { id: 'deepseek-r1:7b', name: 'DeepSeek R1 7B (Local Reasoning)', free: true, reasoning: true, provider: 'ollama' }
   ],
   openrouter: [
-    { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1 (Free)', free: true, reasoning: true, provider: 'openrouter' },
-    { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)', free: true, reasoning: false, provider: 'openrouter' },
-    { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash Exp (Free)', free: true, reasoning: false, provider: 'openrouter' },
     { id: 'nvidia/nemotron-3.5-lightning:free', name: 'Nemotron 3.5 Lightning (Free)', free: true, reasoning: true, provider: 'openrouter' },
-    { id: 'anthropic/claude-3.7-sonnet', name: 'Claude 3.7 Sonnet', free: false, reasoning: true, provider: 'openrouter' },
-    { id: 'openai/gpt-4o', name: 'GPT-4o', free: false, reasoning: false, provider: 'openrouter' }
+    { id: 'recursive/flint-v1.0:free', name: 'Flint (Free)', free: true, reasoning: true, provider: 'openrouter' },
+    { id: 'anthropic/claude-opus-5.5', name: 'Claude Opus 5.5', free: false, reasoning: true, provider: 'openrouter' },
+    { id: 'anthropic/claude-sonnet-5.5', name: 'Claude Sonnet 5.5', free: false, reasoning: true, provider: 'openrouter' },
+    { id: 'openai/gpt-6.1-sol', name: 'GPT-6.1 Sol', free: false, reasoning: true, provider: 'openrouter' },
+    { id: 'google/gemini-3.8-flash', name: 'Gemini 3.8 Flash', free: false, reasoning: true, provider: 'openrouter' },
+    { id: 'x-ai/grok-4.7', name: 'Grok 4.7', free: false, reasoning: true, provider: 'openrouter' }
   ]
 }
 
-function resolveEffectiveApiKey(provider: ProviderId, explicitKey?: string): string | undefined {
+/** Saved key, else the provider's env var. The gateway uses the same rule to pick a backend. */
+export function resolveEffectiveApiKey(provider: ProviderId, explicitKey?: string): string | undefined {
   if (explicitKey?.trim()) return explicitKey.trim()
 
   const envMap: Record<ProviderId, string | undefined> = {
@@ -85,17 +91,227 @@ function resolveEffectiveApiKey(provider: ProviderId, explicitKey?: string): str
   return envMap[provider]?.trim() || undefined
 }
 
+const LIVE_TIMEOUT_MS = 4000
+
+// OpenAI lists every model family; keep the ones usable for chat
+const OPENAI_CHAT_PREFIX = /^(gpt|chatgpt|o\d)/
+const OPENAI_NON_CHAT =
+  /(embedding|tts|whisper|dall-e|image|audio|realtime|transcribe|moderation|search)/
+
+type LiveFetcher = (apiKey: string, baseUrl?: string) => Promise<readonly ModelOption[]>
+
+function apiBase(baseUrl: string | undefined, fallback: string): string {
+  return (baseUrl?.trim() || fallback).replace(/\/+$/, '')
+}
+
+async function getJson<T>(url: string, headers: Record<string, string>): Promise<T | null> {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(LIVE_TIMEOUT_MS) })
+  return res.ok ? ((await res.json()) as T) : null
+}
+
+function openAiCompatibleFetcher(provider: CatalogProvider, defaultBase: string): LiveFetcher {
+  return async (apiKey, baseUrl) => {
+    const data = await getJson<{ data?: Array<{ id: string }> }>(
+      `${apiBase(baseUrl, defaultBase)}/models`,
+      { Authorization: `Bearer ${apiKey}` }
+    )
+    return (data?.data ?? []).map((m): ModelOption => ({
+      id: m.id,
+      name: m.id,
+      free: false,
+      reasoning: false,
+      provider
+    }))
+  }
+}
+
+const LIVE_FETCHERS: Record<CatalogProvider, LiveFetcher> = {
+  anthropic: async (apiKey, baseUrl) => {
+    const data = await getJson<{ data?: Array<{ id: string; display_name?: string }> }>(
+      `${apiBase(baseUrl, 'https://api.anthropic.com/v1')}/models?limit=1000`,
+      { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
+    )
+    return (data?.data ?? []).map((m): ModelOption => ({
+      id: m.id,
+      name: m.display_name || m.id,
+      free: false,
+      reasoning: false,
+      provider: 'anthropic'
+    }))
+  },
+
+  openai: async (apiKey, baseUrl) => {
+    const data = await getJson<{ data?: Array<{ id: string; created?: number }> }>(
+      `${apiBase(baseUrl, 'https://api.openai.com/v1')}/models`,
+      { Authorization: `Bearer ${apiKey}` }
+    )
+    return (data?.data ?? [])
+      .filter((m) => OPENAI_CHAT_PREFIX.test(m.id) && !OPENAI_NON_CHAT.test(m.id))
+      .sort((a, b) => (b.created ?? 0) - (a.created ?? 0))
+      .map((m): ModelOption => ({
+        id: m.id,
+        name: m.id,
+        free: false,
+        reasoning: /^o\d/.test(m.id),
+        provider: 'openai'
+      }))
+  },
+
+  gemini: async (apiKey) => {
+    const data = await getJson<{
+      models?: Array<{
+        name: string
+        displayName?: string
+        thinking?: boolean
+        supportedGenerationMethods?: string[]
+      }>
+    }>('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', {
+      'x-goog-api-key': apiKey
+    })
+    return (data?.models ?? [])
+      .filter(
+        (m) =>
+          m.name.includes('gemini') &&
+          (m.supportedGenerationMethods?.includes('generateContent') ?? true)
+      )
+      .map((m): ModelOption => {
+        const id = m.name.replace(/^models\//, '')
+        return {
+          id,
+          name: m.displayName || id,
+          free: false,
+          reasoning: m.thinking === true,
+          provider: 'gemini'
+        }
+      })
+  },
+
+  xai: openAiCompatibleFetcher('xai', 'https://api.x.ai/v1'),
+  deepseek: openAiCompatibleFetcher('deepseek', 'https://api.deepseek.com/v1')
+}
+
+// Models the local Grok CLI has seen, from ~/.grok/models_cache.json
+function readGrokCliModels(): readonly ModelOption[] {
+  try {
+    const grokCachePath = join(homedir(), '.grok', 'models_cache.json')
+    if (!existsSync(grokCachePath)) return []
+    const cache = JSON.parse(readFileSync(grokCachePath, 'utf8')) as {
+      models?: Record<string, { info?: { name?: string } }>
+    }
+    return Object.entries(cache.models ?? {}).map(([id, m]): ModelOption => ({
+      id,
+      name: `${m.info?.name || id} (Local Grok CLI)`,
+      free: false,
+      reasoning: false,
+      provider: 'xai'
+    }))
+  } catch {
+    // ignore cache read failure
+    return []
+  }
+}
+
+let agyModelsPromise: Promise<readonly ModelOption[]> | null = null
+
+/** Gemini models the Antigravity CLI can run; empty when agy is missing or fails. */
+function fetchAgyGeminiModels(refresh: boolean): Promise<readonly ModelOption[]> {
+  if (refresh || !agyModelsPromise) {
+    agyModelsPromise = (async () => {
+      const binary = await resolveCliBinary('agy')
+      if (!binary) return []
+
+      const { stdout } = await execFileAsync(binary, ['models'], {
+        env: { ...process.env, PATH: await getEnrichedPath() },
+        encoding: 'utf8',
+        timeout: 15000
+      })
+      return parseAgyGeminiModels(stdout)
+    })().catch((error) => {
+      console.error(
+        '[models] agy model list failed:',
+        error instanceof Error ? error.message : error
+      )
+      agyModelsPromise = null
+      return []
+    })
+  }
+  return agyModelsPromise
+}
+
+let codexModelsPromise: Promise<readonly ModelOption[]> | null = null
+
+/** Models the Codex CLI's signed-in account can run; empty when codex is missing or fails. */
+function fetchCodexModels(refresh: boolean): Promise<readonly ModelOption[]> {
+  if (refresh || !codexModelsPromise) {
+    codexModelsPromise = (async () => {
+      const binary = await resolveCliBinary('codex')
+      if (!binary) return []
+
+      const { stdout } = await execFileAsync(binary, ['debug', 'models'], {
+        env: { ...process.env, PATH: await getEnrichedPath() },
+        encoding: 'utf8',
+        timeout: 15000,
+        maxBuffer: 10 * 1024 * 1024
+      })
+      return parseCodexModels(stdout)
+    })().catch((error) => {
+      console.error(
+        '[models] codex model list failed:',
+        error instanceof Error ? error.message : error
+      )
+      codexModelsPromise = null
+      return []
+    })
+  }
+  return codexModelsPromise
+}
+
+/**
+ * Hosted providers: the live API list when a key works (ranked newest-first),
+ * otherwise the keyless models.dev catalog, otherwise the bundled presets.
+ */
+async function fetchHostedModels(
+  provider: CatalogProvider,
+  apiKey: string | undefined,
+  baseUrl: string | undefined,
+  refresh: boolean
+): Promise<readonly ModelOption[]> {
+  const fetchLive = async (key: string): Promise<readonly ModelOption[]> => {
+    try {
+      return await LIVE_FETCHERS[provider](key, baseUrl)
+    } catch (error) {
+      console.error(
+        `[models] ${provider} model list failed:`,
+        error instanceof Error ? error.message : error
+      )
+      return []
+    }
+  }
+
+  const [catalog, live] = await Promise.all([
+    getCatalogModels(provider, app.getPath('userData'), refresh),
+    apiKey ? fetchLive(apiKey) : Promise.resolve([])
+  ])
+
+  if (live.length > 0) return rankByCatalog(live, catalog)
+
+  const grokCli = provider === 'xai' ? readGrokCliModels() : []
+  const fallback = [...catalog, ...grokCli.filter((m) => !catalog.some((c) => c.id === m.id))]
+  return fallback.length > 0 ? fallback : PRESET_MODELS[provider]
+}
+
 export async function fetchModelsForProvider(
   provider: ProviderId,
   apiKey?: string,
-  baseUrl?: string
+  baseUrl?: string,
+  refresh = false
 ): Promise<readonly ModelOption[]> {
   const effectiveKey = resolveEffectiveApiKey(provider, apiKey)
 
   try {
     switch (provider) {
       case 'opencode': {
-        const binary = await resolveOpencodeBinary()
+        const binary = await resolveCliBinary('opencode')
         if (!binary) return PRESET_MODELS.opencode
 
         const pathEnv = await getEnrichedPath()
@@ -229,193 +445,28 @@ export async function fetchModelsForProvider(
         return [...freeModels, ...paidModels]
       }
 
-      case 'xai': {
-        const models: ModelOption[] = []
-
-        // If API key is available, query real xAI API
-        if (effectiveKey) {
-          const url = (baseUrl?.trim() || 'https://api.x.ai/v1').replace(/\/+$/, '')
-          try {
-            const res = await fetch(`${url}/models`, {
-              headers: { Authorization: `Bearer ${effectiveKey}` },
-              signal: AbortSignal.timeout(4000)
-            })
-            if (res.ok) {
-              const data = (await res.json()) as { data?: Array<{ id: string }> }
-              if (data.data && data.data.length > 0) {
-                for (const m of data.data) {
-                  models.push({
-                    id: m.id,
-                    name: m.id,
-                    free: false,
-                    reasoning: m.id.includes('grok-3') || m.id.includes('thinking'),
-                    provider: 'xai'
-                  })
-                }
-                return models
-              }
-            }
-          } catch {
-            // fallback to cache or presets
-          }
+      case 'gemini': {
+        // Without a key, Gemini runs through the Antigravity CLI, so list what agy can run
+        if (!effectiveKey) {
+          const agyModels = await fetchAgyGeminiModels(refresh)
+          if (agyModels.length > 0) return agyModels
         }
-
-        // Check local ~/.grok/models_cache.json
-        try {
-          const grokCachePath = join(homedir(), '.grok', 'models_cache.json')
-          if (existsSync(grokCachePath)) {
-            const cache = JSON.parse(readFileSync(grokCachePath, 'utf8')) as {
-              models?: Record<string, { info?: { name?: string } }>
-            }
-            if (cache.models) {
-              for (const [id, m] of Object.entries(cache.models)) {
-                models.push({
-                  id,
-                  name: `${m.info?.name || id} (Local Grok CLI)`,
-                  free: false,
-                  reasoning: id.includes('grok-3') || id.includes('build'),
-                  provider: 'xai'
-                })
-              }
-            }
-          }
-        } catch {
-          // ignore cache read failure
-        }
-
-        // Merge with preset models, avoiding duplicates
-        for (const preset of PRESET_MODELS.xai) {
-          if (!models.some((m) => m.id === preset.id)) {
-            models.push(preset)
-          }
-        }
-
-        return models
-      }
-
-      case 'anthropic': {
-        if (effectiveKey) {
-          const url = (baseUrl?.trim() || 'https://api.anthropic.com/v1').replace(/\/+$/, '')
-          try {
-            const res = await fetch(`${url}/models`, {
-              headers: {
-                'x-api-key': effectiveKey,
-                'anthropic-version': '2023-06-01'
-              },
-              signal: AbortSignal.timeout(4000)
-            })
-            if (res.ok) {
-              const data = (await res.json()) as {
-                data?: Array<{ id: string; display_name?: string }>
-              }
-              if (data.data && data.data.length > 0) {
-                return data.data.map((m) => ({
-                  id: m.id,
-                  name: m.display_name || m.id,
-                  free: false,
-                  reasoning: m.id.includes('3-7') || m.id.includes('thinking'),
-                  provider: 'anthropic'
-                }))
-              }
-            }
-          } catch {
-            // fallback to presets
-          }
-        }
-
-        return PRESET_MODELS.anthropic
+        return await fetchHostedModels(provider, effectiveKey, baseUrl, refresh)
       }
 
       case 'openai': {
-        if (effectiveKey) {
-          const url = (baseUrl?.trim() || 'https://api.openai.com/v1').replace(/\/+$/, '')
-          try {
-            const res = await fetch(`${url}/models`, {
-              headers: { Authorization: `Bearer ${effectiveKey}` },
-              signal: AbortSignal.timeout(4000)
-            })
-            if (res.ok) {
-              const data = (await res.json()) as { data?: Array<{ id: string }> }
-              if (data.data && data.data.length > 0) {
-                return data.data
-                  .filter((m) => m.id.includes('gpt') || m.id.startsWith('o1') || m.id.startsWith('o3'))
-                  .sort((a, b) => a.id.localeCompare(b.id))
-                  .map((m) => ({
-                    id: m.id,
-                    name: m.id,
-                    free: false,
-                    reasoning: m.id.startsWith('o1') || m.id.startsWith('o3'),
-                    provider: 'openai'
-                  }))
-              }
-            }
-          } catch {
-            // fallback
-          }
+        // Without a key, OpenAI runs through the Codex CLI, so list what codex can run
+        if (!effectiveKey) {
+          const codexModels = await fetchCodexModels(refresh)
+          if (codexModels.length > 0) return codexModels
         }
-
-        return PRESET_MODELS.openai
+        return await fetchHostedModels(provider, effectiveKey, baseUrl, refresh)
       }
 
-      case 'gemini': {
-        if (effectiveKey) {
-          try {
-            const res = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models?key=${effectiveKey}`,
-              { signal: AbortSignal.timeout(4000) }
-            )
-            if (res.ok) {
-              const data = (await res.json()) as { models?: Array<{ name: string; displayName?: string }> }
-              if (data.models && data.models.length > 0) {
-                return data.models
-                  .filter((m) => m.name.includes('gemini'))
-                  .map((m) => {
-                    const cleanId = m.name.replace(/^models\//, '')
-                    return {
-                      id: cleanId,
-                      name: m.displayName || cleanId,
-                      free: false,
-                      reasoning: cleanId.includes('thinking') || cleanId.includes('pro-exp'),
-                      provider: 'gemini'
-                    }
-                  })
-              }
-            }
-          } catch {
-            // fallback
-          }
-        }
-
-        return PRESET_MODELS.gemini
-      }
-
-      case 'deepseek': {
-        if (effectiveKey) {
-          const url = (baseUrl?.trim() || 'https://api.deepseek.com/v1').replace(/\/+$/, '')
-          try {
-            const res = await fetch(`${url}/models`, {
-              headers: { Authorization: `Bearer ${effectiveKey}` },
-              signal: AbortSignal.timeout(4000)
-            })
-            if (res.ok) {
-              const data = (await res.json()) as { data?: Array<{ id: string }> }
-              if (data.data && data.data.length > 0) {
-                return data.data.map((m) => ({
-                  id: m.id,
-                  name: m.id,
-                  free: false,
-                  reasoning: m.id.includes('reasoner'),
-                  provider: 'deepseek'
-                }))
-              }
-            }
-          } catch {
-            // fallback
-          }
-        }
-
-        return PRESET_MODELS.deepseek
-      }
+      case 'xai':
+      case 'anthropic':
+      case 'deepseek':
+        return await fetchHostedModels(provider, effectiveKey, baseUrl, refresh)
 
       default:
         return []

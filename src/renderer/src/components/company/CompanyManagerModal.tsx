@@ -6,7 +6,6 @@ import {
   Users,
   Flame,
   Check,
-  Bot,
   Sparkles,
   RefreshCw
 } from 'lucide-react'
@@ -18,6 +17,7 @@ import type {
   ProviderId
 } from '@shared/types'
 import { Dialog } from '@renderer/components/ui/Dialog'
+import { MemberRow } from './MemberRow'
 
 interface CompanyManagerModalProps {
   readonly activeCompanyId: number | null
@@ -65,26 +65,26 @@ const PRESET_TEMPLATES = [
     funMode: true,
     members: [
       {
-        name: 'Grok 3',
+        name: 'Grok 4.7',
         role: 'Chief Architect',
         provider: 'xai' as ProviderId,
-        modelId: 'grok-3',
+        modelId: 'grok-4.7',
         systemPrompt: 'You are the Chief Architect. Uncompromising on performance, scalability, and straightforward simplicity. Cut through fluff.',
         avatarColor: '#00F0FF'
       },
       {
-        name: 'Claude 3.7 Sonnet',
+        name: 'Claude Sonnet 5.5',
         role: 'Lead Coder',
         provider: 'anthropic' as ProviderId,
-        modelId: 'claude-3-7-sonnet-20250219',
+        modelId: 'claude-sonnet-5-5',
         systemPrompt: 'You are the Lead Software Engineer. Thorough, attentive to code quality, edge cases, and maintainable patterns.',
         avatarColor: '#D97706'
       },
       {
-        name: 'DeepSeek R1',
+        name: 'DeepSeek V4 Pro',
         role: 'Security & QA Critic',
         provider: 'deepseek' as ProviderId,
-        modelId: 'deepseek-reasoner',
+        modelId: 'deepseek-v4-pro',
         systemPrompt: 'You are the Security & Reliability Auditor. Rigorously analyze flaws, vulnerabilities, and logical errors in proposed ideas.',
         avatarColor: '#10B981'
       }
@@ -100,7 +100,7 @@ const PRESET_TEMPLATES = [
         name: 'Planner Claude',
         role: 'Tech Lead / Planner',
         provider: 'anthropic' as ProviderId,
-        modelId: 'claude-3-7-sonnet-20250219',
+        modelId: 'claude-opus-5-5',
         systemPrompt: 'You are the Tech Lead. Decompose user requests into structured, actionable engineering tasks.',
         avatarColor: '#00F0FF'
       },
@@ -108,7 +108,7 @@ const PRESET_TEMPLATES = [
         name: 'Specialist Grok',
         role: 'Full-Stack Developer',
         provider: 'xai' as ProviderId,
-        modelId: 'grok-3',
+        modelId: 'grok-4.7',
         systemPrompt: 'You are the Full-Stack Developer. Write fast, clean, production-ready code with minimal overhead.',
         avatarColor: '#FF7A00'
       },
@@ -116,7 +116,7 @@ const PRESET_TEMPLATES = [
         name: 'QA DeepSeek',
         role: 'Test & Review Engineer',
         provider: 'deepseek' as ProviderId,
-        modelId: 'deepseek-chat',
+        modelId: 'deepseek-flash',
         systemPrompt: 'You are the Test Engineer. Validate code correctness, test edge cases, and write unit tests.',
         avatarColor: '#10B981'
       }
@@ -178,7 +178,7 @@ export function CompanyManagerModal({
 
     setLoadingModels(true)
     try {
-      const res = await window.api.providers.listModels(provider)
+      const res = await window.api.providers.listModels(provider, forceRefresh)
       if (res.ok && res.data.length > 0) {
         setModelsCache((prev) => ({ ...prev, [provider]: res.data }))
         setAvailableModels(res.data)
@@ -307,6 +307,11 @@ export function CompanyManagerModal({
 
   const handleDeleteMember = async (memberId: number): Promise<void> => {
     await window.api.companies.deleteMember(memberId)
+    await loadCompanies()
+  }
+
+  const handleChangeMemberModel = async (memberId: number, modelId: string): Promise<void> => {
+    await window.api.companies.updateMember(memberId, { modelId })
     await loadCompanies()
   }
 
@@ -612,6 +617,13 @@ export function CompanyManagerModal({
                         </button>
                       </div>
                     </div>
+                    {isCustomModel && mModel.trim() && availableModels.length > 0 &&
+                      !availableModels.some((m) => m.id === mModel.trim()) && (
+                        <p className="text-[10px] text-amber-400">
+                          “{mModel.trim()}” is not in the {mProvider} model list. Use the exact API model ID
+                          (e.g. {availableModels[0].id}).
+                        </p>
+                      )}
                     <textarea
                       placeholder="System Prompt / Persona for this member..."
                       value={mPrompt}
@@ -652,48 +664,13 @@ export function CompanyManagerModal({
 
                 <div className="space-y-1.5">
                   {currentCompany.members?.map((m: CompanyMember) => (
-                    <div
+                    <MemberRow
                       key={m.id}
-                      className="flex items-center justify-between p-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 font-mono text-xs"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className="size-7 rounded flex items-center justify-center font-bold text-xs"
-                          style={{
-                            backgroundColor: `${m.avatarColor}20`,
-                            color: m.avatarColor
-                          }}
-                        >
-                          <Bot className="size-4" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-zinc-100">{m.name}</span>
-                            <span
-                              className="text-[10px] px-1.5 py-0.5 rounded"
-                              style={{
-                                backgroundColor: `${m.avatarColor}20`,
-                                color: m.avatarColor
-                              }}
-                            >
-                              {m.role}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-zinc-500 mt-0.5">
-                            {m.provider} · {m.modelId}
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteMember(m.id)}
-                        className="text-zinc-600 hover:text-red-400 p-1"
-                        title="Remove Member"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
+                      member={m}
+                      models={modelsCache[m.provider] ?? []}
+                      onChangeModel={(id, modelId) => void handleChangeMemberModel(id, modelId)}
+                      onDelete={(id) => void handleDeleteMember(id)}
+                    />
                   ))}
                 </div>
               </div>

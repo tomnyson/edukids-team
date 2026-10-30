@@ -152,14 +152,16 @@ export function registerCompanyIpcHandlers(getWindow: () => BrowserWindow | null
     PROVIDER_CHANNELS.testConnection,
     guard(async (_event, config: ProviderConfig): Promise<Result<boolean>> => {
       setProviderConfig(config)
-      const testModelId =
-        config.id === 'opencode'
-          ? 'opencode/mimo-v2.6-flash-free'
-          : config.id === 'gemini'
-            ? 'gemini-2.0-flash'
-            : config.id === 'anthropic'
-              ? 'claude-3-5-haiku-20241022'
-              : 'gpt-4o-mini'
+      // Ping with a model this provider actually lists, preferring a free one
+      const models = await fetchModelsForProvider(
+        config.id,
+        config.apiKey ?? undefined,
+        config.baseUrl ?? undefined
+      )
+      const testModelId = (models.find((m) => m.free) ?? models[0])?.id
+      if (!testModelId) {
+        throw new Error(`No models available for ${config.id}`)
+      }
 
       await dispatchLLM(
         {
@@ -176,12 +178,13 @@ export function registerCompanyIpcHandlers(getWindow: () => BrowserWindow | null
 
   ipcMain.handle(
     PROVIDER_CHANNELS.listModels,
-    guard(async (_event, provider: ProviderId): Promise<Result<readonly ModelOption[]>> => {
+    guard(async (_event, provider: ProviderId, refresh?: unknown): Promise<Result<readonly ModelOption[]>> => {
       const config = getProviderConfig(provider)
       const models = await fetchModelsForProvider(
         provider,
         config?.apiKey ?? undefined,
-        config?.baseUrl ?? undefined
+        config?.baseUrl ?? undefined,
+        refresh === true
       )
       return ok(models)
     })

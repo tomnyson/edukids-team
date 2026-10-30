@@ -22,35 +22,43 @@
 
 :root {
   /*
-   * Surfaces. In the dark palette the canvas sits *below* the rail, so the
-   * transcript reads as a window cut into the chrome. The light palette keeps
-   * the same order of emphasis, inverted: paper for the transcript, a slightly
-   * deeper warm grey for the chrome, white reserved for what floats.
+   * Surfaces. Neutral, zero-chroma greys: the chrome stays out of the way so the
+   * only colour on screen belongs to the bots. In the dark palette the canvas
+   * sits *below* the rail, so the transcript reads as a window cut into the
+   * chrome; the light palette keeps the same order of emphasis, inverted.
    */
-  --c-void: light-dark(oklch(94.6% 0.008 75), oklch(11% 0.003 286));
-  --c-canvas: light-dark(oklch(98.6% 0.004 75), oklch(14.5% 0.004 286));
-  --c-rail: light-dark(oklch(96.4% 0.006 75), oklch(17% 0.004 286));
-  --c-surface: light-dark(oklch(100% 0 0), oklch(21% 0.005 286));
-  --c-raised: light-dark(oklch(92.8% 0.009 75), oklch(25% 0.006 286));
+  --c-void: light-dark(oklch(95.5% 0 0), oklch(9.5% 0 0));
+  --c-canvas: light-dark(oklch(99.2% 0 0), oklch(12.5% 0 0));
+  --c-rail: light-dark(oklch(96.8% 0 0), oklch(15.5% 0 0));
+  --c-surface: light-dark(oklch(100% 0 0), oklch(20% 0 0));
+  --c-raised: light-dark(oklch(93.2% 0 0), oklch(24.5% 0 0));
+  /* The user's own words: must stand off the canvas in both themes. */
+  --c-bubble: light-dark(oklch(94.5% 0 0), oklch(20% 0 0));
 
-  --c-line: light-dark(oklch(89% 0.008 75), oklch(24% 0.005 286));
-  --c-line-strong: light-dark(oklch(78% 0.012 75), oklch(33% 0.007 286));
+  --c-line: light-dark(oklch(90% 0 0), oklch(24% 0 0));
+  --c-line-strong: light-dark(oklch(79% 0 0), oklch(34% 0 0));
 
-  --c-text: light-dark(oklch(26% 0.012 60), oklch(94% 0.003 286));
-  --c-text-muted: light-dark(oklch(46% 0.012 60), oklch(72% 0.006 286));
-  --c-text-faint: light-dark(oklch(60% 0.012 60), oklch(55% 0.007 286));
+  --c-text: light-dark(oklch(19% 0 0), oklch(96.5% 0 0));
+  --c-text-muted: light-dark(oklch(43% 0 0), oklch(72% 0 0));
+  --c-text-faint: light-dark(oklch(58% 0 0), oklch(54% 0 0));
 
   /*
-   * Claude clay — semantic: the mark, the user's own voice, every primary
-   * action. "Bright" means *more emphatic*, which on paper means darker.
+   * The accent is ink, not a hue: primary actions are white-on-black (or the
+   * reverse on paper), and colour is left to the bots' own avatars. "Bright"
+   * means *more emphatic*, which on paper means darker.
    */
-  --c-accent: light-dark(oklch(53% 0.145 40), oklch(67% 0.12 42));
-  --c-accent-bright: light-dark(oklch(46% 0.15 38), oklch(74% 0.135 45));
-  --c-accent-dim: light-dark(oklch(84% 0.055 42), oklch(40% 0.06 42));
+  --c-accent: light-dark(oklch(21% 0 0), oklch(94% 0 0));
+  --c-accent-bright: light-dark(oklch(10% 0 0), oklch(99.5% 0 0));
+  --c-accent-dim: light-dark(oklch(77% 0 0), oklch(45% 0 0));
 
   --c-danger: light-dark(oklch(51% 0.19 25), oklch(66% 0.175 22));
   --c-danger-dim: light-dark(oklch(88% 0.06 25), oklch(32% 0.08 22));
   --c-ok: light-dark(oklch(50% 0.12 158), oklch(73% 0.13 158));
+  --c-warn: light-dark(oklch(55% 0.13 70), oklch(80% 0.13 75));
+
+  /* Identity colours for speakers that are not team members. */
+  --c-bot-default: light-dark(oklch(58% 0.11 210), oklch(78% 0.11 210));
+  --c-bot-moderator: light-dark(oklch(60% 0.16 50), oklch(76% 0.15 55));
 
   /*
    * Syntax. Hues borrowed from the same wheel as the clay accent and held at a
@@ -66,7 +74,7 @@
   --c-syn-name: light-dark(oklch(47% 0.12 40), oklch(74% 0.09 60));
 
   /* Colour only: a shadow string cannot pass through light-dark(). */
-  --c-shadow: light-dark(rgb(60 40 20 / 0.16), rgb(0 0 0 / 0.75));
+  --c-shadow: light-dark(rgb(0 0 0 / 0.14), rgb(0 0 0 / 0.75));
 
   --font-sans: ui-sans-serif, -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
@@ -88,10 +96,13 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
+  /* The composer and other floating pills: round enough to read as one object. */
+  --radius-2xl: 26px;
+  --radius-pill: 999px;
 
-  --rail-width: 15rem;
+  --rail-width: 17rem;
   /* Reading measure — the transcript and the composer share one column. */
-  --measure: 38rem;
+  --measure: 42rem;
 
   --duration-fast: 120ms;
   --duration-normal: 240ms;

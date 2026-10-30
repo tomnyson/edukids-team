@@ -2,6 +2,7 @@ import type { Company, CompanyMember, CompanyStreamEvent } from '@shared/types'
 import { insertCompanyMessage, listCompanyMessages } from '../db/companies'
 import { dispatchLLM } from '../providers/gateway'
 import type { ChatMessage } from '../providers/types'
+import { memberErrorMessage } from './member-error'
 
 export interface OrchestrationOptions {
   readonly company: Company
@@ -107,7 +108,11 @@ export async function runRoundtable(options: OrchestrationOptions): Promise<void
           })
         }
       }
-    )
+    ).catch((error: unknown) => {
+      // A user stop is not a member failure; keep the original cancel error
+      if (signal.aborted) throw error
+      throw new Error(memberErrorMessage(member, error), { cause: error })
+    })
 
     const savedMsg = insertCompanyMessage({
       conversationId,

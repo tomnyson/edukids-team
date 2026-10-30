@@ -11,8 +11,8 @@ const PROVIDERS: readonly { id: ProviderId; label: string; placeholder: string; 
   { id: 'opencode', label: 'OpenCode CLI (Free)', placeholder: 'No key needed (local CLI)', defaultUrl: '/opt/homebrew/bin/opencode' },
   { id: 'xai', label: 'xAI Grok', placeholder: 'xai-...', defaultUrl: 'https://api.x.ai/v1' },
   { id: 'anthropic', label: 'Anthropic Claude', placeholder: 'sk-ant-...', defaultUrl: 'https://api.anthropic.com/v1' },
-  { id: 'openai', label: 'OpenAI', placeholder: 'sk-...', defaultUrl: 'https://openai.com/v1' },
-  { id: 'gemini', label: 'Google Gemini', placeholder: 'AIzaSy...', defaultUrl: 'https://generativelanguage.googleapis.com' },
+  { id: 'openai', label: 'OpenAI', placeholder: 'sk-... (empty = use Codex CLI sign-in)', defaultUrl: 'https://openai.com/v1' },
+  { id: 'gemini', label: 'Google Gemini', placeholder: 'AIzaSy... (empty = use agy CLI sign-in)', defaultUrl: 'https://generativelanguage.googleapis.com' },
   { id: 'deepseek', label: 'DeepSeek', placeholder: 'sk-...', defaultUrl: 'https://api.deepseek.com/v1' },
   { id: 'ollama', label: 'Local (Ollama / LM Studio)', placeholder: 'No key needed', defaultUrl: 'http://localhost:11434/v1' },
   { id: 'openrouter', label: 'OpenRouter', placeholder: 'sk-or-...', defaultUrl: 'https://openrouter.ai/api/v1' }

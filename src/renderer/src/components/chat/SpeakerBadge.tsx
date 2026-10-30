@@ -1,6 +1,5 @@
-import React from 'react'
-import { Bot, User, ShieldAlert } from 'lucide-react'
 import type { SenderType } from '@shared/types'
+import { BotAvatar } from '@renderer/components/ui/BotFace'
 
 interface SpeakerBadgeProps {
   readonly senderType: SenderType
@@ -10,64 +9,38 @@ interface SpeakerBadgeProps {
   readonly phase?: string | null
 }
 
+const MODERATOR_COLOR = 'var(--c-bot-moderator)'
+const MEMBER_COLOR = 'var(--c-bot-default)'
+
+function speakerColor(senderType: SenderType, memberColor?: string | null): string | null {
+  if (senderType === 'moderator') return MODERATOR_COLOR
+  if (senderType === 'system') return null
+  return memberColor || MEMBER_COLOR
+}
+
+/** Who is talking: the bot's face in its own colour, then its name and role. */
 export function SpeakerBadge({
   senderType,
   memberName,
   memberRole,
-  memberColor = '#00F0FF',
+  memberColor,
   phase
 }: SpeakerBadgeProps): React.JSX.Element {
-  if (senderType === 'user') {
-    return (
-      <div className="flex items-center gap-2 font-mono text-xs text-amber-400/90">
-        <div className="flex size-5 items-center justify-center rounded-full bg-amber-500/20 text-amber-300">
-          <User aria-hidden className="size-3" />
-        </div>
-        <span className="font-semibold tracking-wide">You</span>
-      </div>
-    )
-  }
-
-  const isModerator = senderType === 'moderator'
-  const resolvedColor = isModerator ? '#FF7A00' : (memberColor ?? '#00F0FF')
+  const name = senderType === 'user' ? 'You' : memberName || 'Agent'
+  const role = senderType === 'moderator' && !memberRole ? 'Moderator' : memberRole
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div
-        className="flex size-6 items-center justify-center rounded-md border text-xs shadow-xs"
-        style={{
-          borderColor: `${resolvedColor}40`,
-          backgroundColor: `${resolvedColor}15`,
-          color: resolvedColor
-        }}
-      >
-        {isModerator ? (
-          <ShieldAlert aria-hidden className="size-3.5" />
-        ) : (
-          <Bot aria-hidden className="size-3.5" />
-        )}
-      </div>
-
-      <div className="flex items-center gap-1.5 font-mono text-xs">
-        <span className="font-semibold text-zinc-100">{memberName || 'Agent'}</span>
-        {memberRole ? (
-          <span
-            className="rounded px-1.5 py-0.5 text-[10px] font-medium tracking-tight"
-            style={{
-              backgroundColor: `${resolvedColor}20`,
-              color: resolvedColor
-            }}
-          >
-            {memberRole}
-          </span>
-        ) : null}
-
-        {phase ? (
-          <span className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[10px] text-zinc-400">
-            {phase}
-          </span>
-        ) : null}
-      </div>
+    <div className="flex min-w-0 items-center gap-2">
+      <BotAvatar seed={name} color={speakerColor(senderType, memberColor)} size="sm" />
+      <span className="truncate text-[length:var(--text-ui)] font-semibold text-ink">{name}</span>
+      {role ? (
+        <span className="truncate text-[length:var(--text-micro)] text-faint">{role}</span>
+      ) : null}
+      {phase ? (
+        <span className="shrink-0 rounded-[var(--radius-pill)] bg-raised px-2 py-0.5 text-[length:var(--text-micro)] text-muted">
+          {phase}
+        </span>
+      ) : null}
     </div>
   )
 }

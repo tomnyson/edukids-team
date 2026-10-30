@@ -31,4 +31,13 @@ assert.strictEqual(turns[0].member.id, 3)
 assert.strictEqual(turns[1].member.name, 'Grok 3')
 assert.strictEqual(turns[3].phase, 'synthesis')
 
+// A failed turn names the member and its model, so the user knows which setting to fix
+const { memberErrorMessage } = require('../src/main/orchestrator/member-error.ts')
+const dev = { name: 'DEV', provider: 'gemini', modelId: 'gemini-fash 3.8' }
+assert.strictEqual(
+  memberErrorMessage(dev, new Error('Antigravity CLI (agy): model not recognized')),
+  'DEV (gemini · gemini-fash 3.8): Antigravity CLI (agy): model not recognized'
+)
+assert.strictEqual(memberErrorMessage(dev, 'boom'), 'DEV (gemini · gemini-fash 3.8): boom')
+
 console.log('PASS  Orchestrator turn plan unit test passed')

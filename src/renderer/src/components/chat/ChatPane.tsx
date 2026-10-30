@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { PanelLeftOpen, Paperclip, Briefcase } from 'lucide-react'
+import { Paperclip } from 'lucide-react'
 import type { Company, Conversation, EffortId, ModelId, Project } from '@shared/types'
 import { useAttachments } from '@renderer/hooks/useAttachments'
 import { useChatStream, type SendOptions } from '@renderer/hooks/useChatStream'
 import { useCompanyChatStream } from '@renderer/hooks/useCompanyChatStream'
-import { shortenPath } from '@renderer/lib/format'
-import { ClaudeMark } from '@renderer/components/ui/ClaudeMark'
+import { AppMark } from '@renderer/components/ui/AppMark'
 import { ErrorNotice } from '@renderer/components/ui/ErrorNotice'
 import { useSettings } from '@renderer/hooks/settingsContext'
+import { botCount, modeName } from '@renderer/lib/team'
 import { Composer } from './Composer'
 import { PendingTurnView, Turn } from './Turn'
 import { CompanyTurn, PendingCompanyTurnView } from './CompanyTurn'
 import { ActiveSpeakerBar } from './ActiveSpeakerBar'
+import { ChatHeader } from './ChatHeader'
 
 interface ChatPaneProps {
   readonly conversation: Conversation | null
@@ -22,6 +23,7 @@ interface ChatPaneProps {
   readonly company?: Company | null
   readonly onToggleFunMode?: () => void
   readonly onShowRail: () => void
+  readonly onOpenCompany: () => void
   readonly onConversationChanged: () => void
 }
 
@@ -33,20 +35,15 @@ export function ChatPane({
   company,
   onToggleFunMode,
   onShowRail,
+  onOpenCompany,
   onConversationChanged
 }: ChatPaneProps): React.JSX.Element {
   const conversationId = conversation?.id ?? null
   const isCompanyMode = Boolean(company)
 
-  const claudeStream = useChatStream(
-    isCompanyMode ? null : conversationId,
-    onConversationChanged
-  )
+  const claudeStream = useChatStream(isCompanyMode ? null : conversationId, onConversationChanged)
 
-  const companyStream = useCompanyChatStream(
-    isCompanyMode ? conversationId : null,
-    company ?? null
-  )
+  const companyStream = useCompanyChatStream(isCompanyMode ? conversationId : null, company ?? null)
 
   const messages = isCompanyMode ? [] : claudeStream.messages
   const pending = isCompanyMode ? null : claudeStream.pending
@@ -157,54 +154,13 @@ export function ChatPane({
       }}
       onDrop={canAttach ? onDrop : undefined}
     >
-      {/* The title bar doubles as the macOS drag region; its children opt back out. */}
-      <header
-        className={`flex h-12 shrink-0 items-center gap-3 px-4 ${isEmpty ? '' : 'border-b border-line'}`}
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-      >
-        {railHidden ? (
-          <button
-            type="button"
-            onClick={onShowRail}
-            title="Show sidebar"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            className="ml-[4.5rem] flex size-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-faint transition-colors duration-[var(--duration-fast)] hover:bg-surface hover:text-ink"
-          >
-            <PanelLeftOpen aria-hidden className="size-4" />
-            <span className="sr-only">Show sidebar</span>
-          </button>
-        ) : null}
-
-        {isEmpty ? null : (
-          <>
-            <h1
-              className="truncate text-[length:var(--text-ui)] font-medium text-ink flex items-center gap-2"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            >
-              {company ? (
-                <>
-                  <Briefcase className="size-4 text-cyan-400" />
-                  <span>{company.name}</span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-mono">
-                    {company.defaultMode === 'pipeline' ? '⚡ Task Pipeline' : '🎙️ Roundtable'}
-                  </span>
-                </>
-              ) : (
-                conversation?.title ?? 'No conversation'
-              )}
-            </h1>
-            {conversation ? (
-              <span
-                title={conversation.cwd}
-                className="shrink-0 truncate font-mono text-[length:var(--text-micro)] text-faint"
-                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-              >
-                {shortenPath(conversation.cwd)}
-              </span>
-            ) : null}
-          </>
-        )}
-      </header>
+      <ChatHeader
+        conversation={conversation}
+        company={company ?? null}
+        railHidden={railHidden}
+        onShowRail={onShowRail}
+        onOpenCompany={onOpenCompany}
+      />
 
       <div
         ref={scrollRef}
@@ -216,7 +172,7 @@ export function ChatPane({
         }
       >
         <div className="mx-auto w-full max-w-[var(--measure)] space-y-[var(--space-turn)]">
-          {isEmpty ? <EmptyState appVersion={appVersion} /> : null}
+          {isEmpty ? <EmptyState appVersion={appVersion} company={company ?? null} /> : null}
 
           {isCompanyMode ? (
             <>
@@ -284,8 +240,8 @@ export function ChatPane({
 /** Covers the pane while a drag is over it, so the target is unmistakable. */
 function DropOverlay(): React.JSX.Element {
   return (
-    <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-[var(--radius-lg)] border-2 border-dashed border-accent bg-[color-mix(in_oklch,var(--c-accent)_10%,transparent)] backdrop-blur-[2px]">
-      <p className="flex items-center gap-2 font-mono text-[length:var(--text-meta)] text-accent">
+    <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-[var(--radius-2xl)] border-2 border-dashed border-accent bg-[color-mix(in_oklch,var(--c-accent)_10%,transparent)] backdrop-blur-[2px]">
+      <p className="flex items-center gap-2 text-[length:var(--text-ui)] font-medium text-accent">
         <Paperclip aria-hidden className="size-4" />
         Drop to attach
       </p>
@@ -295,24 +251,34 @@ function DropOverlay(): React.JSX.Element {
 
 interface EmptyStateProps {
   readonly appVersion: string | null
+  readonly company: Company | null
 }
 
 /**
- * The one line the app leads with: mark, question, build. Everything else the
- * first-time reader needs is already in the composer sitting under it.
+ * The one thing the app leads with: the mark, and who is listening. Everything
+ * else the first-time reader needs is already in the composer sitting under it.
  */
-function EmptyState({ appVersion }: EmptyStateProps): React.JSX.Element {
+function EmptyState({ appVersion, company }: EmptyStateProps): React.JSX.Element {
+  const detail = company
+    ? `${botCount(company)} in a ${modeName(company).toLowerCase()}`
+    : 'Solo session with Claude'
+
   return (
-    <div className="flex items-center justify-center gap-3 pb-7">
-      <ClaudeMark className="size-7 shrink-0 text-accent" />
-      <h2 className="text-[length:var(--text-display)] leading-none font-medium tracking-tight text-ink">
-        Start a session
-      </h2>
-      {appVersion ? (
-        <span className="rounded-full bg-surface px-2 py-0.5 font-mono text-[length:var(--text-micro)] text-muted">
-          v{appVersion}
-        </span>
-      ) : null}
+    <div className="flex flex-col items-center gap-4 pb-8 text-center">
+      <AppMark className="size-14 text-ink" />
+      <div className="space-y-1.5">
+        <h2 className="text-[length:var(--text-display)] leading-tight font-semibold tracking-tight text-ink">
+          {company ? `What should ${company.name} work on?` : 'What should we work on?'}
+        </h2>
+        <p className="flex items-center justify-center gap-2 text-[length:var(--text-ui)] text-muted">
+          {detail}
+          {appVersion ? (
+            <span className="rounded-[var(--radius-pill)] bg-surface px-2 py-0.5 text-[length:var(--text-micro)] text-faint tabular-nums">
+              v{appVersion}
+            </span>
+          ) : null}
+        </p>
+      </div>
     </div>
   )
 }
