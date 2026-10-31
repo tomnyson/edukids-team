@@ -18,6 +18,7 @@ import type {
 } from '@shared/types'
 import { Dialog } from '@renderer/components/ui/Dialog'
 import { MemberRow } from './MemberRow'
+import { toMemberInput } from './member-form'
 
 interface CompanyManagerModalProps {
   readonly activeCompanyId: number | null
@@ -145,6 +146,7 @@ export function CompanyManagerModal({
   const [mModel, setMModel] = useState('')
   const [mPrompt, setMPrompt] = useState('')
   const [mColor, setMColor] = useState('#00F0FF')
+  const [memberError, setMemberError] = useState<string | null>(null)
   const [availableModels, setAvailableModels] = useState<readonly ModelOption[]>([])
   const [modelsCache, setModelsCache] = useState<Partial<Record<ProviderId, readonly ModelOption[]>>>({})
   const [loadingModels, setLoadingModels] = useState(false)
@@ -288,16 +290,22 @@ export function CompanyManagerModal({
   }
 
   const handleAddMember = async (): Promise<void> => {
-    if (!selectedId || !mName.trim() || !mRole.trim()) return
-    await window.api.companies.addMember({
-      companyId: selectedId,
-      name: mName.trim(),
-      role: mRole.trim(),
+    if (!selectedId) return
+    const input = toMemberInput(selectedId, {
+      name: mName,
+      role: mRole,
       provider: mProvider,
-      modelId: mModel.trim() || 'default',
-      systemPrompt: mPrompt.trim() || `You are ${mName}, acting as ${mRole}.`,
+      modelId: mModel,
+      systemPrompt: mPrompt,
       avatarColor: mColor
     })
+    if (!input) return
+    const res = await window.api.companies.addMember(input)
+    if (!res.ok) {
+      setMemberError(res.error.message)
+      return
+    }
+    setMemberError(null)
     setIsAddingMember(false)
     setMName('')
     setMRole('')
@@ -514,7 +522,7 @@ export function CompanyManagerModal({
                       />
                       <input
                         type="text"
-                        placeholder="Role (e.g. Lead Architect)"
+                        placeholder="Role, optional (e.g. Lead Architect)"
                         value={mRole}
                         onChange={(e) => setMRole(e.target.value)}
                         className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
@@ -643,17 +651,27 @@ export function CompanyManagerModal({
                         />
                       ))}
                     </div>
+                    {memberError && (
+                      <p role="alert" className="text-red-400">
+                        Could not add member: {memberError}
+                      </p>
+                    )}
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
                         onClick={handleAddMember}
-                        className="rounded bg-cyan-500 px-3 py-1 text-black font-semibold"
+                        disabled={!mName.trim()}
+                        title={mName.trim() ? undefined : 'Enter a name first'}
+                        className="rounded bg-cyan-500 px-3 py-1 text-black font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Add
                       </button>
                       <button
                         type="button"
-                        onClick={() => setIsAddingMember(false)}
+                        onClick={() => {
+                          setMemberError(null)
+                          setIsAddingMember(false)
+                        }}
                         className="text-zinc-400"
                       >
                         Cancel

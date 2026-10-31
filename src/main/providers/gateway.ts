@@ -6,7 +6,7 @@ import { runGemini } from './gemini-adapter'
 import { runOpenCode } from './opencode-adapter'
 import { runAgy } from './agy-adapter'
 import { runCodex } from './codex-adapter'
-import { resolveCliBinary } from './cli-binary'
+import { forgetCliBinary, resolveCliBinary } from './cli-binary'
 import { resolveEffectiveApiKey } from './model-fetcher'
 
 export async function dispatchLLM(
@@ -26,9 +26,19 @@ export async function dispatchLLM(
       const openaiKey = resolveEffectiveApiKey('openai', apiKey ?? undefined)
       if (openaiKey) return runOpenAICompatible(openaiKey, baseUrl, request, callbacks)
 
+      // The path is cached for the app's lifetime; after a failure, look again next turn so a
+      // reinstall or a fresh install is picked up without restarting the app
       const codexBinary = await resolveCliBinary('codex')
-      if (codexBinary) return runCodex(codexBinary, request, callbacks)
+      if (codexBinary) {
+        try {
+          return await runCodex(codexBinary, request, callbacks)
+        } catch (error) {
+          forgetCliBinary('codex')
+          throw error
+        }
+      }
 
+      forgetCliBinary('codex')
       throw new Error(
         'OpenAI needs an API key in Provider Settings, or the Codex CLI (`codex`) installed and signed in.'
       )

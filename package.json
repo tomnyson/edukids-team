@@ -10,7 +10,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "node test/db-companies.test.cjs && node test/stream-parser.test.cjs && node test/orchestrator.test.cjs && node test/opencode.test.cjs && node test/model-catalog.test.cjs && node test/agy-stream.test.cjs && node test/codex-stream.test.cjs",
+    "test": "node test/db-companies.test.cjs && node test/stream-parser.test.cjs && node test/orchestrator.test.cjs && node test/opencode.test.cjs && node test/model-catalog.test.cjs && node test/agy-stream.test.cjs && node test/codex-stream.test.cjs && node test/cli-pick.test.cjs && node test/claude-model.test.cjs && node test/member-form.test.cjs && node test/meeting-folder.test.cjs && node test/mention.test.cjs && node test/mentioned-members.test.cjs && node test/meeting-context.test.cjs && node test/company-summaries.test.cjs",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",

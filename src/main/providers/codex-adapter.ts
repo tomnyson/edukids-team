@@ -26,11 +26,12 @@ const CHAT_ONLY_ARGS = [
 ]
 
 // npm installs a JS shim whose native binary can go missing; the shim then dies with an ENOENT
-// stack trace, so keep only that line and say how to fix it
+// stack trace, so keep only that line and say how to fix it. The path names the broken install:
+// a plain `npm i -g` may land in a different prefix and leave this one broken
 function describeFailure(stderr: string): string {
   const missing = stderr.split('\n').find((line) => line.includes('ENOENT'))
   return missing
-    ? `${missing.trim()}. The Codex install is broken; reinstall it with \`npm i -g @openai/codex\`.`
+    ? `${missing.trim()}. That Codex install is missing its native binary; reinstall it with the npm that installed it (\`npm i -g @openai/codex\`), or remove it.`
     : stderr
 }
 

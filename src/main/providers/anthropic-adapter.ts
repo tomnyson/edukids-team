@@ -1,6 +1,11 @@
 import type { LLMRequest, LLMCallbacks, LLMRunResult } from './types'
 import { runClaude } from '../claude/runner'
 import { randomUUID } from 'crypto'
+import { mkdir } from 'fs/promises'
+import { join } from 'path'
+import { app } from 'electron'
+import { isModelId } from '@shared/types'
+import { isClaudeModelId } from './claude-model'
 
 export async function runAnthropic(
   apiKey: string | null,
@@ -15,21 +20,34 @@ export async function runAnthropic(
 
   // If no API key is provided, fallback to Claude CLI
   if (!apiKey?.trim()) {
-    const prompt = `${systemMessage}\n\n${request.messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')}`
+    const prompt = request.messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')
     const abortController = new AbortController()
     if (request.signal) {
       request.signal.addEventListener('abort', () => abortController.abort(), { once: true })
     }
+
+    // The executor works in the project folder. Everyone else gets an empty folder, so no
+    // project CLAUDE.md is picked up from wherever the app was launched
+    const executorCwd = request.executor ? request.cwd : undefined
+    const workspace = executorCwd ?? join(app.getPath('userData'), 'claude-workspace')
+    if (!executorCwd) await mkdir(workspace, { recursive: true })
 
     let streamed = ''
     const outcome = await runClaude({
       prompt,
       sessionId: randomUUID(),
       resume: false,
-      cwd: process.cwd(),
-      model: null,
+      cwd: workspace,
+      // Members store full ids (claude-opus-5-5); the CLI takes those as well as its aliases
+      model:
+        isModelId(request.modelId) || isClaudeModelId(request.modelId) ? request.modelId : null,
       effort: null,
       addDirs: [],
+      chatOnly: !executorCwd,
+      meetingAgent: Boolean(executorCwd),
+      // A chat member's persona replaces the CLI's agent prompt, which would tell it about its
+      // folder and tools; the executor keeps that prompt, since it does use them
+      ...(executorCwd ? { appendSystemPrompt: systemMessage } : { systemPrompt: systemMessage }),
       signal: abortController.signal,
       onDelta: (chunk) => {
         streamed += chunk

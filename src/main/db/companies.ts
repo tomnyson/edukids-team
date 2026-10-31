@@ -312,3 +312,30 @@ export function insertCompanyMessage(
     .get(res.lastInsertRowid) as MessageRow
   return toCompanyMessage(row)
 }
+
+export interface CompanySummary {
+  readonly content: string
+  /** The newest message the notes cover; every later message is still sent word for word. */
+  readonly coveredUntilId: number
+}
+
+export function getCompanySummary(conversationId: number): CompanySummary | null {
+  const row = getDb()
+    .prepare('SELECT content, covered_until_id FROM company_summaries WHERE conversation_id = ?')
+    .get(conversationId) as { content: string; covered_until_id: number } | undefined
+  return row ? { content: row.content, coveredUntilId: row.covered_until_id } : null
+}
+
+/** Only ever moves forward, so a stopped run that settles late cannot undo newer notes. */
+export function saveCompanySummary(conversationId: number, summary: CompanySummary): void {
+  getDb()
+    .prepare(`
+      INSERT INTO company_summaries (conversation_id, content, covered_until_id) VALUES (?, ?, ?)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        content = excluded.content,
+        covered_until_id = excluded.covered_until_id,
+        updated_at = datetime('now')
+      WHERE excluded.covered_until_id > company_summaries.covered_until_id
+    `)
+    .run(conversationId, summary.content, summary.coveredUntilId)
+}

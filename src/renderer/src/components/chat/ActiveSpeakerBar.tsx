@@ -7,13 +7,16 @@ interface ActiveSpeakerBarProps {
   readonly onStop?: () => void
 }
 
-/** Floats above the composer while a bot holds the floor, with a way to cut it off. */
+/**
+ * Floats above the composer while a bot holds the floor, with a way to cut it off. It also shows
+ * for work between turns, such as condensing notes, so Stop is always in reach.
+ */
 export function ActiveSpeakerBar({
   activeSpeaker,
   phaseDescription,
   onStop
 }: ActiveSpeakerBarProps): React.JSX.Element | null {
-  if (!activeSpeaker) return null
+  if (!activeSpeaker && !phaseDescription) return null
 
   return (
     <div
@@ -22,7 +25,7 @@ export function ActiveSpeakerBar({
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="relative shrink-0">
-          <BotAvatar seed={activeSpeaker} size="xs" />
+          <BotAvatar seed={activeSpeaker ?? 'meeting'} size="xs" />
           <span className="absolute -right-0.5 -bottom-0.5 flex size-2">
             <span className="absolute inline-flex size-full rounded-full bg-ok opacity-75 motion-safe:animate-ping" />
             <span className="relative inline-flex size-2 rounded-full bg-ok ring-2 ring-surface" />
@@ -30,7 +33,11 @@ export function ActiveSpeakerBar({
         </span>
 
         <p className="truncate text-[length:var(--text-ui)] text-muted">
-          <span className="font-semibold text-ink">{activeSpeaker}</span>{' '}
+          {activeSpeaker ? (
+            <>
+              <span className="font-semibold text-ink">{activeSpeaker}</span>{' '}
+            </>
+          ) : null}
           {phaseDescription ?? 'is thinking…'}
         </p>
       </div>

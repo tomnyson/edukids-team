@@ -1,36 +1,20 @@
 import type { CompanyMember } from '@shared/types'
-import { insertCompanyMessage, listCompanyMessages } from '../db/companies'
+import { getCompanySummary, insertCompanyMessage, listCompanyMessages } from '../db/companies'
 import { dispatchLLM } from '../providers/gateway'
 import type { ChatMessage } from '../providers/types'
 import type { OrchestrationOptions } from './roundtable'
 import { memberErrorMessage } from './member-error'
+import { buildContextMessages } from './meeting-context'
+import { meetingFolderNote } from './meeting-folder'
+import { DIRECT_REPLY_INSTRUCTION } from './mentions'
 
-export async function runPipeline(options: OrchestrationOptions): Promise<void> {
-  const { company, conversationId, userPrompt, signal, onEvent } = options
+export async function runPipeline(
+  options: OrchestrationOptions,
+  addressed: readonly CompanyMember[] = []
+): Promise<void> {
+  // The user's prompt is already saved by runCompanyOrchestration, which also checks for members
+  const { company, conversationId, folder, signal, onEvent } = options
   const members = company.members ?? []
-
-  if (members.length === 0) {
-    throw new Error('This Company has no members configured.')
-  }
-
-  // 1. Record user's prompt
-  const userMsg = insertCompanyMessage({
-    conversationId,
-    senderType: 'user',
-    memberId: null,
-    content: userPrompt,
-    reasoningContent: null,
-    stepIndex: 0,
-    phase: 'prompt',
-    durationMs: null,
-    tokensUsed: null
-  })
-  onEvent({
-    type: 'member-done',
-    conversationId,
-    memberId: null,
-    message: userMsg
-  })
 
   const leader = members[0]
   let currentStep = 1
@@ -56,29 +40,30 @@ export async function runPipeline(options: OrchestrationOptions): Promise<void> 
       description: `${member.name} is working on ${phase}...`
     })
 
-    const history = listCompanyMessages(conversationId)
-    const contextMessages: ChatMessage[] = history.map((h) => ({
-      role: h.senderType === 'user' ? 'user' : 'assistant',
-      content: h.memberName ? `[${h.memberName} - ${h.memberRole}]: ${h.content}` : h.content
-    }))
-
-    contextMessages.push({
-      role: 'user',
-      content: `[Pipeline Step: ${phase}]: ${instruction}`
-    })
+    const contextMessages: ChatMessage[] = [
+      ...buildContextMessages(
+        listCompanyMessages(conversationId),
+        getCompanySummary(conversationId)
+      ),
+      { role: 'user', content: `[Pipeline Step: ${phase}]: ${instruction}` }
+    ]
 
     let streamedReasoning = ''
     let streamedContent = ''
+    // The leader is the one executor, so two members never edit the same files
+    const isExecutor = member.id === leader.id
 
     const result = await dispatchLLM(
       {
         provider: member.provider,
         modelId: member.modelId,
-        systemPrompt: `${member.systemPrompt}\n\nYou are executing a structured task pipeline. Produce production-grade, highly actionable deliverables.`,
+        systemPrompt: `${member.systemPrompt}\n\nYou are executing a structured task pipeline. Produce production-grade, highly actionable deliverables.\n\n${meetingFolderNote(folder, leader.name, isExecutor)}`,
         messages: contextMessages,
         temperature: member.temperature,
         funMode: company.funMode,
-        signal
+        signal,
+        cwd: folder,
+        executor: isExecutor
       },
       {
         onReasoningDelta: (chunk) => {
@@ -128,6 +113,16 @@ export async function runPipeline(options: OrchestrationOptions): Promise<void> 
     })
 
     return finalContent
+  }
+
+  // An @mention is a direct question: only the members it names reply, with no pipeline around it
+  if (addressed.length > 0) {
+    for (const member of addressed) {
+      if (signal.aborted) break
+      await executeStep(member, 'reply', DIRECT_REPLY_INSTRUCTION)
+    }
+    onEvent({ type: 'finished', conversationId })
+    return
   }
 
   // Phase 1: Planning / Task Breakdown by Leader

@@ -1,43 +1,29 @@
 import type { Company, CompanyMember, CompanyStreamEvent } from '@shared/types'
-import { insertCompanyMessage, listCompanyMessages } from '../db/companies'
+import { getCompanySummary, insertCompanyMessage, listCompanyMessages } from '../db/companies'
 import { dispatchLLM } from '../providers/gateway'
 import type { ChatMessage } from '../providers/types'
 import { memberErrorMessage } from './member-error'
+import { buildContextMessages } from './meeting-context'
+import { meetingFolderNote } from './meeting-folder'
+import { DIRECT_REPLY_INSTRUCTION } from './mentions'
 
 export interface OrchestrationOptions {
   readonly company: Company
   readonly conversationId: number
   readonly userPrompt: string
+  /** The project folder the code goes into; resolved from the DB, never from the renderer. */
+  readonly folder: string
   readonly signal: AbortSignal
   readonly onEvent: (event: CompanyStreamEvent) => void
 }
 
-export async function runRoundtable(options: OrchestrationOptions): Promise<void> {
-  const { company, conversationId, userPrompt, signal, onEvent } = options
+export async function runRoundtable(
+  options: OrchestrationOptions,
+  addressed: readonly CompanyMember[] = []
+): Promise<void> {
+  // The user's prompt is already saved by runCompanyOrchestration, which also checks for members
+  const { company, conversationId, folder, signal, onEvent } = options
   const members = company.members ?? []
-
-  if (members.length === 0) {
-    throw new Error('This Company has no members configured.')
-  }
-
-  // 1. Save user's prompt as the first message
-  const userMsg = insertCompanyMessage({
-    conversationId,
-    senderType: 'user',
-    memberId: null,
-    content: userPrompt,
-    reasoningContent: null,
-    stepIndex: 0,
-    phase: 'prompt',
-    durationMs: null,
-    tokensUsed: null
-  })
-  onEvent({
-    type: 'member-done',
-    conversationId,
-    memberId: null,
-    message: userMsg
-  })
 
   const moderator = members.find((m) => m.id === company.moderatorMemberId) ?? members[0]
   let currentStep = 1
@@ -64,29 +50,30 @@ export async function runRoundtable(options: OrchestrationOptions): Promise<void
       description: `${member.name} is speaking as ${member.role}...`
     })
 
-    const history = listCompanyMessages(conversationId)
-    const contextMessages: ChatMessage[] = history.map((h) => ({
-      role: h.senderType === 'user' ? 'user' : 'assistant',
-      content: h.memberName ? `[${h.memberName} - ${h.memberRole}]: ${h.content}` : h.content
-    }))
-
-    contextMessages.push({
-      role: 'user',
-      content: `[Instruction]: ${instruction}`
-    })
+    const contextMessages: ChatMessage[] = [
+      ...buildContextMessages(
+        listCompanyMessages(conversationId),
+        getCompanySummary(conversationId)
+      ),
+      { role: 'user', content: `[Instruction]: ${instruction}` }
+    ]
 
     let streamedReasoning = ''
     let streamedContent = ''
+    // One executor, so two members never edit the same files
+    const isExecutor = member.id === moderator?.id
 
     const result = await dispatchLLM(
       {
         provider: member.provider,
         modelId: member.modelId,
-        systemPrompt: `${member.systemPrompt}\n\nYou are participating in a multi-model executive roundtable meeting. State your arguments concisely and sharply.`,
+        systemPrompt: `${member.systemPrompt}\n\nYou are participating in a multi-model executive roundtable meeting. State your arguments concisely and sharply.\n\n${meetingFolderNote(folder, moderator?.name ?? member.name, isExecutor)}`,
         messages: contextMessages,
         temperature: member.temperature,
         funMode: company.funMode,
-        signal
+        signal,
+        cwd: folder,
+        executor: isExecutor
       },
       {
         onReasoningDelta: (chunk) => {
@@ -116,7 +103,10 @@ export async function runRoundtable(options: OrchestrationOptions): Promise<void
 
     const savedMsg = insertCompanyMessage({
       conversationId,
-      senderType: member.id === moderator?.id && phase !== 'debate' ? 'moderator' : 'member',
+      senderType:
+        member.id === moderator?.id && (phase === 'framing' || phase === 'synthesis')
+          ? 'moderator'
+          : 'member',
       memberId: member.id,
       content: result.text || streamedContent,
       reasoningContent: result.reasoningText || streamedReasoning || null,
@@ -132,6 +122,16 @@ export async function runRoundtable(options: OrchestrationOptions): Promise<void
       memberId: member.id,
       message: savedMsg
     })
+  }
+
+  // An @mention is a direct question: only the members it names reply, with no meeting around it
+  if (addressed.length > 0) {
+    for (const member of addressed) {
+      if (signal.aborted) break
+      await executeTurn(member, 'reply', DIRECT_REPLY_INSTRUCTION)
+    }
+    onEvent({ type: 'finished', conversationId })
+    return
   }
 
   // 2. Framing Phase by Moderator

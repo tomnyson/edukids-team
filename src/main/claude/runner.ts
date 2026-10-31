@@ -12,12 +12,26 @@ export interface RunOptions {
   /** False for the first turn of a session, true to continue it. */
   readonly resume: boolean
   readonly cwd: string
-  /** null omits --model, leaving whatever default the CLI is configured with. */
-  readonly model: ModelId | null
+  /**
+   * An alias or a full `claude-*` id, checked by the caller since it reaches argv. null omits
+   * --model, leaving whatever default the CLI is configured with.
+   */
+  readonly model: ModelId | (string & {}) | null
   /** null omits --effort, same contract as the model flag. */
   readonly effort: EffortId | null
   /** Directories the CLI must be granted beyond cwd, for attached files. */
   readonly addDirs: readonly string[]
+  /** A meeting member's turn: plain chat, without tools, MCP servers, user settings or skills. */
+  readonly chatOnly?: boolean
+  /**
+   * A meeting executor's turn: file and shell tools in cwd, still without MCP servers, user
+   * settings or skills.
+   */
+  readonly meetingAgent?: boolean
+  /** Replaces the CLI's own agent system prompt, which describes cwd and tools to the model. */
+  readonly systemPrompt?: string
+  /** Added after the CLI's agent system prompt, which keeps describing cwd and tools. */
+  readonly appendSystemPrompt?: string
   readonly signal: AbortSignal
   readonly onDelta: (text: string) => void
   readonly onTool: (name: string) => void
@@ -31,6 +45,34 @@ export interface RunOutcome {
 }
 
 const STDERR_KEEP = 4_000
+
+const CHAT_ONLY_ARGS = [
+  '--tools',
+  '',
+  '--strict-mcp-config',
+  '--setting-sources',
+  '',
+  '--disable-slash-commands',
+  '--no-session-persistence'
+]
+
+// Print mode has nobody to answer a permission prompt: edits inside cwd and Bash pass, and
+// anything else that would prompt is denied instead of hanging the turn
+const MEETING_AGENT_ARGS = [
+  '--tools',
+  'Bash,Read,Write,Edit,Glob,Grep',
+  '--permission-mode',
+  'acceptEdits',
+  '--allowedTools',
+  'Bash',
+  '--permission-prompts',
+  'none',
+  '--strict-mcp-config',
+  '--setting-sources',
+  '',
+  '--disable-slash-commands',
+  '--no-session-persistence'
+]
 
 /**
  * `claude` without -p opens an interactive REPL that never exits, so print mode
@@ -48,6 +90,16 @@ function buildArgs(options: RunOptions): string[] {
 
   if (options.model) args.push('--model', options.model)
   if (options.effort) args.push('--effort', options.effort)
+
+  // Otherwise the CLI loads the user's hooks, skills and MCP servers and works the prompt as an
+  // agent, running tools for minutes before it answers
+  if (options.chatOnly) args.push(...CHAT_ONLY_ARGS)
+  else if (options.meetingAgent) args.push(...MEETING_AGENT_ARGS)
+  // The `=` form keeps a prompt that starts with a dash from being read as a flag
+  if (options.systemPrompt) args.push(`--system-prompt=${options.systemPrompt}`)
+  if (options.appendSystemPrompt) {
+    args.push(`--append-system-prompt=${options.appendSystemPrompt}`)
+  }
 
   // Without this the CLI refuses to read attachments living outside cwd.
   for (const dir of options.addDirs) args.push('--add-dir', dir)
@@ -67,6 +119,13 @@ export async function runClaude(options: RunOptions): Promise<RunOutcome> {
     })
   }
 
+  // A meeting executor runs shell commands, so it never falls back to the home folder
+  if (options.meetingAgent && !existsSync(options.cwd)) {
+    return failure({
+      code: 'NOT_FOUND',
+      message: `The project folder ${options.cwd} no longer exists.`
+    })
+  }
   const cwd = existsSync(options.cwd) ? options.cwd : homedir()
   const path = await getEnrichedPath()
 

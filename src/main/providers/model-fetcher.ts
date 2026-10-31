@@ -5,7 +5,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { app } from 'electron'
 import type { ModelOption, ProviderId } from '@shared/types'
-import { resolveCliBinary } from './cli-binary'
+import { forgetCliBinary, resolveCliBinary } from './cli-binary'
 import { getEnrichedPath } from '../claude/environment'
 import { getCatalogModels, rankByCatalog, type CatalogProvider } from './model-catalog'
 import { parseAgyGeminiModels } from './agy-stream'
@@ -243,6 +243,8 @@ let codexModelsPromise: Promise<readonly ModelOption[]> | null = null
 /** Models the Codex CLI's signed-in account can run; empty when codex is missing or fails. */
 function fetchCodexModels(refresh: boolean): Promise<readonly ModelOption[]> {
   if (refresh || !codexModelsPromise) {
+    // A manual refresh also looks for codex again, so an install made mid-session shows up
+    if (refresh) forgetCliBinary('codex')
     codexModelsPromise = (async () => {
       const binary = await resolveCliBinary('codex')
       if (!binary) return []

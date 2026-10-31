@@ -138,6 +138,15 @@ const MIGRATIONS: readonly Migration[] = [
 
   CREATE INDEX IF NOT EXISTS idx_company_messages_conv ON company_messages(conversation_id, id);
   CREATE INDEX IF NOT EXISTS idx_company_members_company ON company_members(company_id, order_index);
+  `,
+  // A meeting's older messages condensed into notes, so each turn stops re-sending all of them
+  `
+  CREATE TABLE company_summaries (
+    conversation_id  INTEGER PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+    content          TEXT    NOT NULL,
+    covered_until_id INTEGER NOT NULL,
+    updated_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
   `
 ]
 

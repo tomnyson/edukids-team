@@ -13,6 +13,10 @@ export interface LLMRequest {
   readonly temperature?: number
   readonly funMode?: boolean
   readonly signal?: AbortSignal
+  /** The meeting's project folder; only the executor's CLI runs in it. */
+  readonly cwd?: string
+  /** The meeting's executor: writes code and runs shell commands in `cwd`. */
+  readonly executor?: boolean
 }
 
 export interface LLMCallbacks {

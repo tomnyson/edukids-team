@@ -1,4 +1,8 @@
-import { ipcMain, type BrowserWindow } from 'electron'
+import { app, ipcMain, type BrowserWindow } from 'electron'
+import { existsSync } from 'fs'
+import { mkdir } from 'fs/promises'
+import { homedir } from 'os'
+import { join } from 'path'
 import { COMPANY_CHANNELS, PROVIDER_CHANNELS } from '@shared/ipc'
 import type {
   AddMemberInput,
@@ -27,7 +31,10 @@ import {
   updateCompanyMember
 } from '../db/companies'
 import { getAllProviderConfigs, getProviderConfig, setProviderConfig } from '../db/providers'
+import { findProject } from '../db/projects'
+import { findConversation } from '../db/queries'
 import { runCompanyOrchestration } from '../orchestrator'
+import { resolveMeetingFolder } from '../orchestrator/meeting-folder'
 import { dispatchLLM } from '../providers/gateway'
 import { fetchModelsForProvider } from '../providers/model-fetcher'
 
@@ -48,6 +55,32 @@ function guard<A extends unknown[], T>(
 }
 
 const inFlightCompanyRuns = new Map<number, AbortController>()
+
+/**
+ * The folder a meeting writes code into: its project's, read from the DB. A project folder that
+ * is gone fails the turn rather than sending the executor somewhere else.
+ */
+async function prepareMeetingFolder(conversationId: number): Promise<Result<string>> {
+  const conversation = findConversation(conversationId)
+  if (!conversation) return fail({ code: 'NOT_FOUND', message: 'Conversation not found' })
+
+  const project = conversation.projectId ? findProject(conversation.projectId) : null
+  const workspacesRoot = join(app.getPath('userData'), 'workspaces')
+  const folder = resolveMeetingFolder({
+    projectPath: project?.path ?? null,
+    conversationId,
+    home: homedir(),
+    workspacesRoot
+  })
+
+  // Only the meeting's own folder is created; a missing project folder is never recreated empty
+  if (folder === join(workspacesRoot, String(conversationId))) {
+    await mkdir(folder, { recursive: true })
+  } else if (!existsSync(folder)) {
+    return fail({ code: 'NOT_FOUND', message: `The project folder ${folder} no longer exists.` })
+  }
+  return ok(folder)
+}
 
 export function registerCompanyIpcHandlers(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle(COMPANY_CHANNELS.list, guard(async (): Promise<Result<readonly Company[]>> => {
@@ -96,6 +129,9 @@ export function registerCompanyIpcHandlers(getWindow: () => BrowserWindow | null
         return fail({ code: 'NOT_FOUND', message: 'Company not found' })
       }
 
+      const folder = await prepareMeetingFolder(conversationId)
+      if (!folder.ok) return folder
+
       inFlightCompanyRuns.get(conversationId)?.abort()
       const controller = new AbortController()
       inFlightCompanyRuns.set(conversationId, controller)
@@ -112,10 +148,13 @@ export function registerCompanyIpcHandlers(getWindow: () => BrowserWindow | null
         company,
         conversationId,
         userPrompt: prompt,
+        folder: folder.data,
         signal: controller.signal,
         onEvent: sendEvent
       })
         .catch((err) => {
+          // A stop is not a failure: the renderer has already reset, and a newer ask owns the UI
+          if (controller.signal.aborted) return
           sendEvent({
             type: 'error',
             conversationId,
@@ -123,7 +162,10 @@ export function registerCompanyIpcHandlers(getWindow: () => BrowserWindow | null
           })
         })
         .finally(() => {
-          inFlightCompanyRuns.delete(conversationId)
+          // A stopped run can settle after a newer ask started; keep the newer run stoppable
+          if (inFlightCompanyRuns.get(conversationId) === controller) {
+            inFlightCompanyRuns.delete(conversationId)
+          }
         })
 
       return ok(true)
