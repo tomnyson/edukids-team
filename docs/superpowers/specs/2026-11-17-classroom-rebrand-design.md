@@ -15,7 +15,8 @@ a symbolic likeness is enough.
   it, student desks facing the board.
 - The board carries the greeting "Chúc mừng Ngày Nhà giáo Việt Nam 20/11", with correct
   Vietnamese diacritics.
-- A plain "FPT Polytechnic" wordmark on an orange band on a side wall.
+- A plain "FPT Polytechnic" wordmark on an orange band on the back wall, beside the board. (First
+  planned for a side wall; from the camera's usual angle that wall is too foreshortened to read.)
 - Every place the interface shows "Claude GUI" or the bot-face mark shows "EduKids Team" and the
   new logo instead.
 
@@ -51,7 +52,7 @@ plane just in front of the board. This keeps the diacritics right and needs no n
 Greeting and wordmark are constants in a new `lib/office/classroom.ts`.
 
 **Room.** In `OfficeFurniture.tsx`, `Room` gains the board (frame, green surface, chalk tray) on
-the back wall and the orange band on a side wall. `Desk` becomes a student desk; the lead keeps a
+the back wall and the orange band beside it. `Desk` becomes a student desk; the lead keeps a
 larger teacher's desk. Each stays a small component; if the file passes about 300 lines the board
 moves to its own file.
 
@@ -62,8 +63,9 @@ value the scene needs (which way a seat faces) is returned by `deskSpots` and te
 `test/office-state.test.cjs`.
 
 **Name.** A single `APP_NAME = 'EduKids Team'` in `src/shared/` replaces the literal in
-`Sidebar.tsx`, `SettingsDialog.tsx`, `AppMark.tsx`, `ChatHeader.tsx`, `useDictation.ts`; the
-`index.html` title is changed by hand. The view switch reads "Classroom" instead of "Office".
+`Sidebar.tsx`, `SettingsDialog.tsx`, `AppMark.tsx`, `ChatHeader.tsx`; the `index.html` title is
+changed by hand. The microphone message in `useDictation.ts` keeps "Claude GUI": it tells the
+user which entry to allow in System Settings, and that entry carries the product name. The view switch reads "Classroom" instead of "Office".
 
 **Logo.** `~/Downloads/edukids-tech-avatar.jpg` (the "ET" mark) is copied into
 `src/renderer/src/assets/` and `AppMark` renders it as an image, keeping its `className` prop so
