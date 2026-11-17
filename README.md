@@ -82,3 +82,4 @@ src/
 │   └── styles/      # tokens.css, global.css
 └── shared/          # types + IPC channel names, used by both sides
 ```
+# edukids-team
