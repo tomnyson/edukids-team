@@ -42,7 +42,12 @@ export interface RunOutcome {
   readonly error: AppError | null
   readonly durationMs: number | null
   readonly costUsd: number | null
+  /** False when no CLI process ever started, so no session exists to resume. */
+  readonly spawned: boolean
 }
+
+/** What a started process produced; whether it started is added when the run finishes. */
+type Ran = Omit<RunOutcome, 'spawned'>
 
 const STDERR_KEEP = 4_000
 
@@ -128,6 +133,8 @@ export async function runClaude(options: RunOptions): Promise<RunOutcome> {
   }
   const cwd = existsSync(options.cwd) ? options.cwd : homedir()
   const path = await getEnrichedPath()
+  // The abort listener only exists once the child does; a Stop before that never spawns it
+  if (options.signal.aborted) return failure({ code: 'CANCELLED', message: 'Stopped.' })
 
   return new Promise<RunOutcome>((resolve) => {
     const child = spawn(binary, buildArgs(options), {
@@ -140,17 +147,17 @@ export async function runClaude(options: RunOptions): Promise<RunOutcome> {
     const parser = new NdjsonParser()
     const startedAt = Date.now()
     let streamed = ''
-    let outcome: RunOutcome | null = null
+    let outcome: Ran | null = null
     let stderr = ''
     let settled = false
     let timedOut = false
 
-    const finish = (value: RunOutcome): void => {
+    const finish = (value: Ran, spawned = true): void => {
       if (settled) return
       settled = true
       clearTimeout(timer)
       options.signal.removeEventListener('abort', onAbort)
-      resolve(value)
+      resolve({ ...value, spawned })
     }
 
     /**
@@ -217,7 +224,8 @@ export async function runClaude(options: RunOptions): Promise<RunOutcome> {
           code: 'SPAWN_FAILED',
           message: 'Could not start the Claude CLI.',
           detail: error.message
-        })
+        }),
+        false
       )
     )
 
@@ -264,9 +272,11 @@ export async function runClaude(options: RunOptions): Promise<RunOutcome> {
   })
 }
 
+/** A run that ended before any CLI process started. */
 const failure = (error: AppError): RunOutcome => ({
   text: '',
   error,
   durationMs: null,
-  costUsd: null
+  costUsd: null,
+  spawned: false
 })

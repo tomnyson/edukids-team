@@ -9,6 +9,7 @@ import {
   type SettingsView
 } from '@shared/settings'
 import type { Result } from '@shared/types'
+import { isPlausibleApiKey } from '../voice/transcript'
 
 /**
  * Settings live in one hand-editable JSON file. The store keeps the parsed copy
@@ -94,7 +95,7 @@ export function setVoiceApiKey(raw: unknown): Result<SettingsView> {
   if (typeof raw !== 'string' || !raw.trim()) {
     return { ok: false, error: { code: 'INVALID_INPUT', message: 'Paste a key first.' } }
   }
-  if (raw.length > KEY_MAX_LENGTH) {
+  if (raw.length > KEY_MAX_LENGTH || !isPlausibleApiKey(raw.trim())) {
     return { ok: false, error: { code: 'INVALID_INPUT', message: 'That is not an API key.' } }
   }
   if (!safeStorage.isEncryptionAvailable()) {

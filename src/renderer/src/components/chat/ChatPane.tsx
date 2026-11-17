@@ -1,18 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Paperclip } from 'lucide-react'
-import type { Company, Conversation, EffortId, ModelId, Project } from '@shared/types'
+import type { Company, Conversation, EffortId, ModelId, Project, ProviderId } from '@shared/types'
+import { directMember } from '@shared/direct-chat'
 import { useAttachments } from '@renderer/hooks/useAttachments'
-import { useChatStream, type SendOptions } from '@renderer/hooks/useChatStream'
+import { useChatStream } from '@renderer/hooks/useChatStream'
 import { useCompanyChatStream } from '@renderer/hooks/useCompanyChatStream'
+import { useSearchMode } from '@renderer/hooks/useSearchMode'
+import { useProposals } from '@renderer/hooks/useProposals'
+import { useOfficePrefs } from '@renderer/hooks/useOfficePrefs'
+import { useOfficeState } from '@renderer/hooks/useOfficeState'
+import { ViewToggle } from '@renderer/components/office/ViewToggle'
+import { usePromptQueue } from '@renderer/hooks/usePromptQueue'
+import {
+  canRetry,
+  findSent,
+  rememberSent,
+  type SendOptions,
+  type SentPrompt
+} from '@renderer/lib/queueView'
 import { AppMark } from '@renderer/components/ui/AppMark'
 import { ErrorNotice } from '@renderer/components/ui/ErrorNotice'
 import { useSettings } from '@renderer/hooks/settingsContext'
-import { botCount, modeName } from '@renderer/lib/team'
+import { botCount, isDirectChat, modeName } from '@renderer/lib/team'
 import { Composer } from './Composer'
 import { PendingTurnView, Turn } from './Turn'
 import { CompanyTurn, PendingCompanyTurnView } from './CompanyTurn'
+import { ProposalCard } from './ProposalCard'
 import { ActiveSpeakerBar } from './ActiveSpeakerBar'
+import { QueuedPrompts } from './QueuedPrompts'
 import { ChatHeader } from './ChatHeader'
+
+// three.js is large; it is only fetched the first time someone opens the office
+const OfficeView = lazy(() => import('@renderer/components/office/OfficeView'))
 
 interface ChatPaneProps {
   readonly conversation: Conversation | null
@@ -22,9 +41,12 @@ interface ChatPaneProps {
   readonly railHidden: boolean
   readonly company?: Company | null
   readonly onToggleFunMode?: () => void
+  readonly onDirectModelChange?: (memberId: number, provider: ProviderId, modelId: string) => void
   readonly onShowRail: () => void
   readonly onOpenCompany: () => void
   readonly onConversationChanged: () => void
+  /** A proposed member was approved, so the team has one more. */
+  readonly onTeamChanged: () => void
 }
 
 export function ChatPane({
@@ -34,9 +56,11 @@ export function ChatPane({
   railHidden,
   company,
   onToggleFunMode,
+  onDirectModelChange,
   onShowRail,
   onOpenCompany,
-  onConversationChanged
+  onConversationChanged,
+  onTeamChanged
 }: ChatPaneProps): React.JSX.Element {
   const conversationId = conversation?.id ?? null
   const isCompanyMode = Boolean(company)
@@ -44,15 +68,26 @@ export function ChatPane({
   const claudeStream = useChatStream(isCompanyMode ? null : conversationId, onConversationChanged)
 
   const companyStream = useCompanyChatStream(isCompanyMode ? conversationId : null, company ?? null)
+  const team = useProposals(isCompanyMode ? conversationId : null, onTeamChanged)
+  const [officePrefs, setOfficePrefs] = useOfficePrefs()
+  // Listened to in either view, so the office is already current when it is opened mid-meeting
+  const office = useOfficeState(isCompanyMode ? conversationId : null)
+
+  // Busy means something runs in this conversation, even a prompt sent before this pane mounted
+  const queue = usePromptQueue(isCompanyMode ? 'company' : 'solo', conversationId)
 
   const messages = isCompanyMode ? [] : claudeStream.messages
   const pending = isCompanyMode ? null : claudeStream.pending
-  const loading = isCompanyMode ? companyStream.busy : claudeStream.loading
+  const loading = queue.busy
   const error = isCompanyMode ? companyStream.error : claudeStream.error
   const dismissError = isCompanyMode ? companyStream.dismissError : claudeStream.dismissError
 
   const attachments = useAttachments()
   const { settings } = useSettings()
+  // Any team has an office, a direct chat's single model included; solo Claude has no members.
+  // Settings → Appearance can switch the whole view off.
+  const hasOffice = Boolean(company) && settings.office3d
+  const showOffice = hasOffice && officePrefs.view === 'office'
   // Seeded from the last turn because the pane remounts per conversation; a
   // conversation that never chose one falls back to its project's default, and
   // then to the global one.
@@ -65,7 +100,8 @@ export function ChatPane({
   const [dragging, setDragging] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const lastSentRef = useRef<{ prompt: string; options: SendOptions } | null>(null)
+  // What each queued prompt was sent with, so a failed one is retried as it was sent
+  const [sentLog, setSentLog] = useState<readonly SentPrompt[]>([])
   const pinnedToBottom = useRef(true)
   // dragenter/dragleave fire for every child, so nesting is counted, not guessed.
   const dragDepth = useRef(0)
@@ -84,31 +120,40 @@ export function ChatPane({
   }, [messages, pending?.streamed])
 
   const { paths, add, clear } = attachments
+  const [searchMode, setSearchMode] = useSearchMode(conversationId)
+  const searchable = isDirectChat(company ?? null)
 
+  /** Queues the prompt; attachments are let go only once the main process took them. */
   const submit = useCallback(
-    (prompt: string) => {
+    async (prompt: string): Promise<boolean> => {
+      pinnedToBottom.current = true
       if (isCompanyMode) {
-        pinnedToBottom.current = true
-        clear()
-        void companyStream.send(prompt)
-        return
+        // Only a direct chat searches; a meeting's prompt always goes as it is
+        const accepted = await companyStream.send(prompt, searchable ? searchMode : 'off')
+        if (accepted) clear()
+        return accepted
       }
       const options: SendOptions = { model, effort, attachments: paths }
-      lastSentRef.current = { prompt, options }
-      pinnedToBottom.current = true
-      clear()
-      void claudeStream.send(prompt, options)
+      const accepted = await claudeStream.submit(prompt, options)
+      if (accepted) {
+        setSentLog((log) => rememberSent(log, { prompt, options }))
+        clear()
+      }
+      return accepted
     },
-    [clear, effort, model, paths, claudeStream, companyStream, isCompanyMode]
+    [clear, effort, model, paths, claudeStream, companyStream, isCompanyMode, searchable, searchMode]
   )
 
-  const retry = useCallback(() => {
-    if (isCompanyMode) return
-    const last = lastSentRef.current
-    if (!last) return
+  const failedSend = isCompanyMode ? null : findSent(sentLog, claudeStream.failedPrompt)
+  const retryable = canRetry(failedSend, queue.paused, queue.waiting.length)
+
+  const retry = useCallback(async (): Promise<void> => {
+    if (!failedSend) return
     dismissError()
-    void claudeStream.send(last.prompt, last.options)
-  }, [dismissError, claudeStream, isCompanyMode])
+    pinnedToBottom.current = true
+    const accepted = await claudeStream.submit(failedSend.prompt, failedSend.options)
+    if (accepted) setSentLog((log) => rememberSent(log, failedSend))
+  }, [dismissError, claudeStream, failedSend])
 
   const pickFiles = useCallback(async (): Promise<void> => {
     const result = await window.api.pickFiles()
@@ -160,11 +205,35 @@ export function ChatPane({
         railHidden={railHidden}
         onShowRail={onShowRail}
         onOpenCompany={onOpenCompany}
+        viewToggle={
+          hasOffice ? (
+            <ViewToggle view={officePrefs.view} onChange={(view) => setOfficePrefs({ view })} />
+          ) : null
+        }
       />
+
+      {showOffice && company ? (
+        <Suspense fallback={<div className="min-h-0 flex-1" aria-busy="true" />}>
+          <OfficeView
+            company={company}
+            office={office}
+            proposals={team.proposals}
+            prefs={officePrefs}
+            onPrefsChange={setOfficePrefs}
+          />
+        </Suspense>
+      ) : null}
+      {showOffice && error ? (
+        <div className="px-6 pb-2">
+          <ErrorNotice error={error} onDismiss={dismissError} />
+        </div>
+      ) : null}
 
       <div
         ref={scrollRef}
         onScroll={onScroll}
+        // Hidden rather than unmounted, so the transcript keeps its scroll position
+        hidden={showOffice}
         className={
           isEmpty
             ? 'flex min-h-0 flex-1 items-end justify-center px-6'
@@ -177,7 +246,19 @@ export function ChatPane({
           {isCompanyMode ? (
             <>
               {companyStream.messages.map((message) => (
-                <CompanyTurn key={message.id} message={message} />
+                <Fragment key={message.id}>
+                  <CompanyTurn message={message} />
+                  {team.proposals
+                    .filter((proposal) => proposal.messageId === message.id)
+                    .map((proposal) => (
+                      <ProposalCard
+                        key={proposal.id}
+                        proposal={proposal}
+                        onApprove={team.approve}
+                        onReject={team.reject}
+                      />
+                    ))}
+                </Fragment>
               ))}
 
               {companyStream.pending ? (
@@ -200,7 +281,13 @@ export function ChatPane({
             </>
           )}
 
-          {error ? <ErrorNotice error={error} onDismiss={dismissError} onRetry={retry} /> : null}
+          {error ? (
+            <ErrorNotice
+              error={error}
+              onDismiss={dismissError}
+              onRetry={retryable ? () => void retry() : undefined}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -212,8 +299,18 @@ export function ChatPane({
         />
       )}
 
+      <QueuedPrompts
+        waiting={queue.waiting}
+        paused={queue.paused}
+        error={queue.error}
+        onRemove={(itemId) => void queue.remove(itemId)}
+        onResume={() => void queue.resume()}
+        onClear={() => void queue.clear()}
+        onDismissError={queue.dismissError}
+      />
+
       <Composer
-        centered={isEmpty}
+        centered={isEmpty && !showOffice}
         disabled={conversationId === null}
         busy={loading}
         cwd={conversation?.cwd ?? null}
@@ -223,6 +320,9 @@ export function ChatPane({
         effort={effort}
         company={company}
         onToggleFunMode={onToggleFunMode}
+        onDirectModelChange={onDirectModelChange}
+        searchMode={searchMode}
+        onSearchModeChange={setSearchMode}
         onSubmit={submit}
         onCancel={isCompanyMode ? companyStream.stop : () => void claudeStream.cancel()}
         onAttach={() => void pickFiles()}
@@ -249,6 +349,14 @@ function DropOverlay(): React.JSX.Element {
   )
 }
 
+/** Who is listening: the one model of a direct chat, or the size and style of the meeting. */
+function teamDetail(company: Company): string {
+  const model = isDirectChat(company) ? directMember(company) : null
+  return model
+    ? `Direct chat with ${model.modelId}`
+    : `${botCount(company)} in a ${modeName(company).toLowerCase()}`
+}
+
 interface EmptyStateProps {
   readonly appVersion: string | null
   readonly company: Company | null
@@ -259,9 +367,7 @@ interface EmptyStateProps {
  * else the first-time reader needs is already in the composer sitting under it.
  */
 function EmptyState({ appVersion, company }: EmptyStateProps): React.JSX.Element {
-  const detail = company
-    ? `${botCount(company)} in a ${modeName(company).toLowerCase()}`
-    : 'Solo session with Claude'
+  const detail = company ? teamDetail(company) : 'Solo session with Claude'
 
   return (
     <div className="flex flex-col items-center gap-4 pb-8 text-center">

@@ -1,18 +1,18 @@
-import { FaceGlyph } from './BotFace'
+import { APP_NAME } from '@shared/brand'
+import logo from '@renderer/assets/logo.png'
 
 interface AppMarkProps {
   readonly className?: string
 }
 
-/**
- * The app mark: the bubble face glancing to its right, toward whoever speaks
- * next. Inherits `currentColor`, so one component serves the rail, the header
- * and the empty state.
- */
+/** The app mark. One component serves the rail, the header and the empty state. */
 export function AppMark({ className }: AppMarkProps): React.JSX.Element {
   return (
-    <span role="img" aria-label="Claude GUI" className={`inline-flex ${className ?? ''}`}>
-      <FaceGlyph eyes="pill" glance={1} className="size-full" />
-    </span>
+    <img
+      src={logo}
+      alt={APP_NAME}
+      draggable={false}
+      className={`inline-block rounded-[22%] object-cover ${className ?? ''}`}
+    />
   )
 }

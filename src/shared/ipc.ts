@@ -43,10 +43,57 @@ export const PROVIDER_CHANNELS = {
   listModels: 'providers:list-models'
 } as const
 
+export const VOICE_CHANNELS = {
+  ensureMic: 'voice:ensure-mic',
+  status: 'voice:status',
+  transcribe: 'voice:transcribe',
+  cancelTranscribe: 'voice:cancel-transcribe',
+  downloadModel: 'voice:download-model',
+  cancelDownload: 'voice:cancel-download',
+  downloadProgress: 'voice:download-progress'
+} as const
+
+export const SKILL_CHANNELS = {
+  list: 'skills:list',
+  get: 'skills:get',
+  create: 'skills:create',
+  update: 'skills:update',
+  importFolder: 'skills:import-folder',
+  delete: 'skills:delete',
+  reveal: 'skills:reveal',
+  setMemberSkills: 'skills:set-member-skills'
+} as const
+
+/** New members the CEO proposed; approving one is the only way it joins the team. */
+export const PROPOSAL_CHANNELS = {
+  list: 'proposals:list',
+  approve: 'proposals:approve',
+  reject: 'proposals:reject'
+} as const
+
+export const SEARCH_CHANNELS = {
+  test: 'search:test'
+} as const
+
+/** Prompts waiting behind a running one; `changed` is pushed from main on every change. */
+export const QUEUE_CHANNELS = {
+  submit: 'queue:submit',
+  remove: 'queue:remove',
+  resume: 'queue:resume',
+  clear: 'queue:clear',
+  state: 'queue:state',
+  changed: 'queue:changed'
+} as const
+
 export type IpcChannel =
   | (typeof IPC)[keyof typeof IPC]
   | (typeof COMPANY_CHANNELS)[keyof typeof COMPANY_CHANNELS]
   | (typeof PROVIDER_CHANNELS)[keyof typeof PROVIDER_CHANNELS]
+  | (typeof VOICE_CHANNELS)[keyof typeof VOICE_CHANNELS]
+  | (typeof SKILL_CHANNELS)[keyof typeof SKILL_CHANNELS]
+  | (typeof QUEUE_CHANNELS)[keyof typeof QUEUE_CHANNELS]
+  | (typeof SEARCH_CHANNELS)[keyof typeof SEARCH_CHANNELS]
+  | (typeof PROPOSAL_CHANNELS)[keyof typeof PROPOSAL_CHANNELS]
 
 /** Guardrails applied at the IPC boundary before anything reaches the CLI. */
 export const LIMITS = {
@@ -59,5 +106,9 @@ export const LIMITS = {
    */
   runIdleTimeoutMs: 300_000,
   maxAttachments: 20,
-  projectNameMaxLength: 80
+  projectNameMaxLength: 80,
+  /** One dictation clip; the renderer stops recording here. */
+  voiceMaxSeconds: 120,
+  /** 120 s of 16 kHz mono 16-bit audio is 3.84 MB plus the header; this leaves headroom. */
+  voiceMaxBytes: 4_000_000
 } as const

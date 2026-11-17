@@ -1,6 +1,20 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC, COMPANY_CHANNELS, PROVIDER_CHANNELS } from '@shared/ipc'
-import type { SettingsView } from '@shared/settings'
+import {
+  IPC,
+  COMPANY_CHANNELS,
+  PROVIDER_CHANNELS,
+  QUEUE_CHANNELS,
+  PROPOSAL_CHANNELS,
+  SEARCH_CHANNELS,
+  SKILL_CHANNELS,
+  VOICE_CHANNELS
+} from '@shared/ipc'
+import type { QueueKind, QueueSnapshot, QueueSubmitRequest, QueuedPrompt } from '@shared/queue'
+import type { MemberProposal, ProposalDraft } from '@shared/proposals'
+import type { SearchMode } from '@shared/search'
+import type { SkillDetail, SkillDraft, SkillSummary } from '@shared/skills'
+import type { SettingsView, VoiceModelId } from '@shared/settings'
+import type { MicAccess, VoiceDownloadProgress, VoiceStatus } from '@shared/voice'
 import type {
   AddMemberInput,
   AskRequest,
@@ -106,6 +120,27 @@ const api = {
     return () => ipcRenderer.removeListener(IPC.claudeStream, handler)
   },
 
+  /** Prompts waiting behind a running one, per conversation; solo and company queue apart. */
+  queue: {
+    /** Queues a solo prompt and returns at once; the run streams on onStream when its turn comes. */
+    submit: (request: QueueSubmitRequest): Promise<Result<QueuedPrompt>> =>
+      ipcRenderer.invoke(QUEUE_CHANNELS.submit, request),
+    state: (kind: QueueKind, conversationId: number): Promise<Result<QueueSnapshot>> =>
+      ipcRenderer.invoke(QUEUE_CHANNELS.state, kind, conversationId),
+    /** Takes out a waiting prompt; false for the running one, which is stopped instead. */
+    remove: (kind: QueueKind, conversationId: number, itemId: string): Promise<Result<boolean>> =>
+      ipcRenderer.invoke(QUEUE_CHANNELS.remove, kind, conversationId, itemId),
+    resume: (kind: QueueKind, conversationId: number): Promise<Result<QueueSnapshot>> =>
+      ipcRenderer.invoke(QUEUE_CHANNELS.resume, kind, conversationId),
+    clear: (kind: QueueKind, conversationId: number): Promise<Result<QueueSnapshot>> =>
+      ipcRenderer.invoke(QUEUE_CHANNELS.clear, kind, conversationId),
+    onChanged: (listener: (snapshot: QueueSnapshot) => void): (() => void) => {
+      const handler = (_event: unknown, payload: QueueSnapshot): void => listener(payload)
+      ipcRenderer.on(QUEUE_CHANNELS.changed, handler)
+      return () => ipcRenderer.removeListener(QUEUE_CHANNELS.changed, handler)
+    }
+  },
+
   companies: {
     list: (): Promise<Result<readonly Company[]>> =>
       ipcRenderer.invoke(COMPANY_CHANNELS.list),
@@ -125,8 +160,20 @@ const api = {
       ipcRenderer.invoke(COMPANY_CHANNELS.deleteMember, id),
     listMessages: (conversationId: number): Promise<Result<readonly CompanyMessage[]>> =>
       ipcRenderer.invoke(COMPANY_CHANNELS.messagesList, conversationId),
-    askStream: (companyId: number, conversationId: number, prompt: string): Promise<Result<boolean>> =>
-      ipcRenderer.invoke(COMPANY_CHANNELS.askStream, companyId, conversationId, prompt),
+    /** Queues the prompt behind the meeting's others; progress arrives on onStreamEvent. */
+    askStream: (
+      companyId: number,
+      conversationId: number,
+      prompt: string,
+      searchMode: SearchMode = 'off'
+    ): Promise<Result<QueuedPrompt>> =>
+      ipcRenderer.invoke(
+        COMPANY_CHANNELS.askStream,
+        companyId,
+        conversationId,
+        prompt,
+        searchMode
+      ),
     stopStream: (conversationId: number): Promise<Result<boolean>> =>
       ipcRenderer.invoke(COMPANY_CHANNELS.stopStream, conversationId),
     onStreamEvent: (listener: (event: CompanyStreamEvent) => void): (() => void) => {
@@ -145,6 +192,60 @@ const api = {
       ipcRenderer.invoke(PROVIDER_CHANNELS.testConnection, config),
     listModels: (provider: ProviderId, refresh = false): Promise<Result<readonly ModelOption[]>> =>
       ipcRenderer.invoke(PROVIDER_CHANNELS.listModels, provider, refresh)
+  },
+
+  proposals: {
+    list: (conversationId: number): Promise<Result<readonly MemberProposal[]>> =>
+      ipcRenderer.invoke(PROPOSAL_CHANNELS.list, conversationId),
+    /** Adds the member as edited; the main process checks every field again. */
+    approve: (id: number, draft: ProposalDraft): Promise<Result<MemberProposal>> =>
+      ipcRenderer.invoke(PROPOSAL_CHANNELS.approve, id, draft),
+    reject: (id: number): Promise<Result<MemberProposal>> =>
+      ipcRenderer.invoke(PROPOSAL_CHANNELS.reject, id)
+  },
+
+  search: {
+    /** Runs one query with the saved settings; resolves to how many results came back. */
+    test: (): Promise<Result<number>> => ipcRenderer.invoke(SEARCH_CHANNELS.test)
+  },
+
+  voice: {
+    /** Asks macOS for the microphone on first use; reports the state after that. */
+    ensureMic: (): Promise<Result<MicAccess>> => ipcRenderer.invoke(VOICE_CHANNELS.ensureMic),
+    status: (): Promise<Result<VoiceStatus>> => ipcRenderer.invoke(VOICE_CHANNELS.status),
+    /** A 16 kHz mono 16-bit WAV clip; resolves to the cleaned transcript. */
+    transcribe: (wav: Uint8Array): Promise<Result<string>> =>
+      ipcRenderer.invoke(VOICE_CHANNELS.transcribe, wav),
+    cancelTranscribe: (): Promise<Result<boolean>> =>
+      ipcRenderer.invoke(VOICE_CHANNELS.cancelTranscribe),
+    downloadModel: (model: VoiceModelId): Promise<Result<VoiceStatus>> =>
+      ipcRenderer.invoke(VOICE_CHANNELS.downloadModel, model),
+    cancelDownload: (model: VoiceModelId): Promise<Result<boolean>> =>
+      ipcRenderer.invoke(VOICE_CHANNELS.cancelDownload, model),
+    onDownloadProgress: (listener: (progress: VoiceDownloadProgress) => void): (() => void) => {
+      const handler = (_event: unknown, payload: VoiceDownloadProgress): void => listener(payload)
+      ipcRenderer.on(VOICE_CHANNELS.downloadProgress, handler)
+      return () => ipcRenderer.removeListener(VOICE_CHANNELS.downloadProgress, handler)
+    }
+  },
+
+  skills: {
+    /** Both libraries, metadata only. */
+    list: (): Promise<Result<readonly SkillSummary[]>> => ipcRenderer.invoke(SKILL_CHANNELS.list),
+    get: (ref: string): Promise<Result<SkillDetail>> => ipcRenderer.invoke(SKILL_CHANNELS.get, ref),
+    create: (draft: SkillDraft): Promise<Result<SkillDetail>> =>
+      ipcRenderer.invoke(SKILL_CHANNELS.create, draft),
+    /** App skills only; `dir` is the folder name and cannot change. */
+    update: (dir: string, draft: SkillDraft): Promise<Result<SkillDetail>> =>
+      ipcRenderer.invoke(SKILL_CHANNELS.update, dir, draft),
+    /** Opens a folder picker in the main process and copies the chosen skill in. */
+    importFolder: (): Promise<Result<SkillDetail>> =>
+      ipcRenderer.invoke(SKILL_CHANNELS.importFolder),
+    /** Moves an app skill to the Trash and detaches it from every member. */
+    delete: (dir: string): Promise<Result<true>> => ipcRenderer.invoke(SKILL_CHANNELS.delete, dir),
+    reveal: (ref: string): Promise<Result<true>> => ipcRenderer.invoke(SKILL_CHANNELS.reveal, ref),
+    setMemberSkills: (memberId: number, refs: readonly string[]): Promise<Result<CompanyMember>> =>
+      ipcRenderer.invoke(SKILL_CHANNELS.setMemberSkills, memberId, refs)
   }
 }
 

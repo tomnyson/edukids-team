@@ -1,5 +1,6 @@
+import { APP_NAME } from '@shared/brand'
 import { useState } from 'react'
-import { FolderCog, Mic, Palette, Info } from 'lucide-react'
+import { BookOpen, FolderCog, Globe, Mic, Palette, Info } from 'lucide-react'
 import {
   EDITORS,
   SEND_KEYS,
@@ -12,6 +13,8 @@ import { EFFORTS, MODELS } from '@shared/types'
 import { useSettings } from '@renderer/hooks/settingsContext'
 import { Dialog } from '@renderer/components/ui/Dialog'
 import { Picker, Row, Segmented, type Choice } from './controls'
+import { SearchPane } from './SearchPane'
+import { SkillsPane } from './SkillsPane'
 import { VoicePane } from './VoicePane'
 
 /** `null` means "omit the flag and let the CLI decide", and needs a name in the UI. */
@@ -31,10 +34,18 @@ const PANES = [
   { id: 'general', label: 'General', icon: FolderCog },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'voice', label: 'Voice', icon: Mic },
+  { id: 'search', label: 'Search', icon: Globe },
+  { id: 'skills', label: 'Skills', icon: BookOpen },
   { id: 'about', label: 'About', icon: Info }
 ] as const
 
 type PaneId = (typeof PANES)[number]['id']
+
+const ON_OFF = [
+  { id: 'on', label: 'On' },
+  { id: 'off', label: 'Off' }
+] as const
+type OnOff = (typeof ON_OFF)[number]['id']
 
 interface SettingsDialogProps {
   readonly appVersion: string | null
@@ -145,14 +156,27 @@ export function SettingsDialog({
                 onChange={(value) => void update({ theme: value })}
               />
             </Row>
+            <Row
+              label="3D classroom"
+              hint="Adds a Chat / Classroom switch to team chats, showing each member at a desk."
+            >
+              <Segmented<OnOff>
+                label="3D classroom"
+                value={settings.office3d ? 'on' : 'off'}
+                options={ON_OFF}
+                onChange={(value) => void update({ office3d: value === 'on' })}
+              />
+            </Row>
           </section>
         ) : null}
 
         {pane === 'voice' ? <VoicePane /> : null}
+        {pane === 'search' ? <SearchPane /> : null}
+        {pane === 'skills' ? <SkillsPane /> : null}
 
         {pane === 'about' ? (
           <section aria-label="About" className="space-y-3">
-            <Row label="Claude GUI" hint="A desktop front end for the Claude CLI.">
+            <Row label={APP_NAME} hint="A desktop workspace for your AI team.">
               <span className="font-mono text-[length:var(--text-meta)] text-muted">
                 {appVersion ?? '—'}
               </span>

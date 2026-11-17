@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Company, SystemInfo } from '@shared/types'
+import type { Company, ProviderId, SystemInfo } from '@shared/types'
 import { useConversations } from './hooks/useConversations'
 import { useProjects } from './hooks/useProjects'
 import { Sidebar } from './components/sidebar/Sidebar'
@@ -64,6 +64,17 @@ export function App(): React.JSX.Element {
     await reloadCompanies()
   }, [activeCompany, reloadCompanies])
 
+  const [companyError, setCompanyError] = useState<string | null>(null)
+
+  const handleDirectModelChange = useCallback(
+    async (memberId: number, provider: ProviderId, modelId: string) => {
+      const result = await window.api.companies.updateMember(memberId, { provider, modelId })
+      setCompanyError(result.ok ? null : result.error.message)
+      await reloadCompanies()
+    },
+    [reloadCompanies]
+  )
+
   const onConversationChanged = useCallback(() => {
     void refresh()
   }, [refresh])
@@ -105,6 +116,15 @@ export function App(): React.JSX.Element {
           </div>
         ) : null}
 
+        {companyError ? (
+          <div className="px-6 pt-4">
+            <ErrorNotice
+              error={{ code: 'DB_ERROR', message: companyError }}
+              onDismiss={() => setCompanyError(null)}
+            />
+          </div>
+        ) : null}
+
         {/* Keyed so switching conversations or companies remounts the transcript state. */}
         <ChatPane
           key={`${activeId ?? 'none'}-${activeCompanyId ?? 'solo'}`}
@@ -114,9 +134,13 @@ export function App(): React.JSX.Element {
           railHidden={railHidden}
           company={activeCompany}
           onToggleFunMode={handleToggleFunMode}
+          onDirectModelChange={(memberId, provider, modelId) =>
+            void handleDirectModelChange(memberId, provider, modelId)
+          }
           onShowRail={() => setRailHidden(false)}
           onOpenCompany={() => setCompanyModalOpen(true)}
           onConversationChanged={onConversationChanged}
+          onTeamChanged={() => void reloadCompanies()}
         />
       </main>
 

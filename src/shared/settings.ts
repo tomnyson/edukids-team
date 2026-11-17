@@ -5,6 +5,11 @@
  * The file on disk is hand-editable, so every read goes through `normalise`:
  * a bad value falls back to its default rather than reaching the UI or argv.
  */
+import {
+  SEARCH_BACKENDS,
+  normaliseInstanceUrl,
+  type SearchSettings
+} from './search'
 import { isEffortId, isModelId, type EffortId, type ModelId } from './types'
 
 export const THEMES = [
@@ -55,6 +60,9 @@ export interface AppSettings {
   readonly editor: EditorId
   readonly sendKey: SendKeyId
   readonly voice: VoiceSettings
+  readonly search: SearchSettings
+  /** Whether team chats offer the 3D office view at all. */
+  readonly office3d: boolean
 }
 
 /**
@@ -78,7 +86,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // language is worse than letting the model detect one.
     language: 'auto',
     localModel: 'small'
-  }
+  },
+  // SearXNG needs an instance; search stays unavailable until one is set
+  search: { backend: 'searxng', searxngUrl: '' },
+  office3d: true
 }
 
 const LANGUAGE = /^(auto|[a-z]{2})$/
@@ -94,6 +105,7 @@ export function normaliseSettings(raw: unknown): AppSettings {
   const input = record(raw)
   const voice = record(input.voice)
   const language = typeof voice.language === 'string' ? voice.language : ''
+  const search = record(input.search)
 
   return {
     theme: oneOf(
@@ -121,7 +133,16 @@ export function normaliseSettings(raw: unknown): AppSettings {
       ),
       language: LANGUAGE.test(language) ? language : DEFAULT_SETTINGS.voice.language,
       localModel: oneOf(VOICE_MODELS, voice.localModel, DEFAULT_SETTINGS.voice.localModel)
-    }
+    },
+    search: {
+      backend: oneOf(
+        SEARCH_BACKENDS.map((backend) => backend.id),
+        search.backend,
+        DEFAULT_SETTINGS.search.backend
+      ),
+      searxngUrl: normaliseInstanceUrl(search.searxngUrl)
+    },
+    office3d: typeof input.office3d === 'boolean' ? input.office3d : DEFAULT_SETTINGS.office3d
   }
 }
 
@@ -134,6 +155,7 @@ export function mergeSettings(current: AppSettings, patch: unknown): AppSettings
   return normaliseSettings({
     ...current,
     ...input,
-    voice: { ...current.voice, ...record(input.voice) }
+    voice: { ...current.voice, ...record(input.voice) },
+    search: { ...current.search, ...record(input.search) }
   })
 }

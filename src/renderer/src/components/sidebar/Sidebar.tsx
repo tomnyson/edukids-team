@@ -1,3 +1,4 @@
+import { APP_NAME } from '@shared/brand'
 import { useCallback, useMemo, useState } from 'react'
 import { FolderPlus, ListCollapse, PanelLeftClose, Plus, Search } from 'lucide-react'
 import type { Company, Conversation, Project, ProjectPatch } from '@shared/types'
@@ -110,9 +111,9 @@ export function Sidebar({
         className="flex h-12 shrink-0 items-center gap-2 pr-2 pl-[4.75rem]"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <AppMark className="size-5 shrink-0 text-ink" />
+        <AppMark className="size-5 shrink-0" />
         <span className="text-[length:var(--text-ui)] font-semibold tracking-tight text-ink">
-          Claude GUI
+          {APP_NAME}
         </span>
         <button
           type="button"

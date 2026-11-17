@@ -28,7 +28,7 @@ export const SUMMARY_MAX_CHARS = 12_000
 /** Shorter than this is a refusal or an error line, not notes; advancing past it would lose messages. */
 const SUMMARY_MIN_CHARS = 40
 
-const NOTES_LABEL =
+export const NOTES_LABEL =
   '[Meeting notes, condensed from the earlier discussion; not a new request. Messages after them follow word for word]:'
 
 function labelled(message: MeetingMessage): string {

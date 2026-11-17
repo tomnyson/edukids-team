@@ -17,6 +17,7 @@ import type {
   ProviderId
 } from '@shared/types'
 import { Dialog } from '@renderer/components/ui/Dialog'
+import { useSkills } from '@renderer/hooks/useSkills'
 import { MemberRow } from './MemberRow'
 import { toMemberInput } from './member-form'
 
@@ -151,6 +152,7 @@ export function CompanyManagerModal({
   const [modelsCache, setModelsCache] = useState<Partial<Record<ProviderId, readonly ModelOption[]>>>({})
   const [loadingModels, setLoadingModels] = useState(false)
   const [isCustomModel, setIsCustomModel] = useState(false)
+  const skillLibrary = useSkills()
   const COLOR_OPTIONS = ['#00F0FF', '#D97706', '#10B981', '#8B5CF6', '#EC4899']
 
   const ALL_PROVIDERS: readonly ProviderId[] = [
@@ -323,6 +325,16 @@ export function CompanyManagerModal({
     await loadCompanies()
   }
 
+  const handleChangeMemberSkills = async (
+    memberId: number,
+    refs: readonly string[]
+  ): Promise<string | null> => {
+    const result = await window.api.skills.setMemberSkills(memberId, refs)
+    if (!result.ok) return result.error.message
+    await loadCompanies()
+    return null
+  }
+
   return (
     <Dialog title="Manage AI Companies" onClose={onClose}>
       <div className="flex h-full w-full divide-x divide-zinc-800">
@@ -422,6 +434,7 @@ export function CompanyManagerModal({
                   >
                     <option value="roundtable">🎙️ Roundtable Debate</option>
                     <option value="pipeline">⚡ Task Pipeline</option>
+                    <option value="single">💬 Direct Chat (one model)</option>
                   </select>
                 </div>
 
@@ -688,6 +701,8 @@ export function CompanyManagerModal({
                       models={modelsCache[m.provider] ?? []}
                       onChangeModel={(id, modelId) => void handleChangeMemberModel(id, modelId)}
                       onDelete={(id) => void handleDeleteMember(id)}
+                      skills={skillLibrary.skills}
+                      onChangeSkills={handleChangeMemberSkills}
                     />
                   ))}
                 </div>

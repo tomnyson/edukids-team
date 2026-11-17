@@ -1,7 +1,9 @@
+import { linkCitations } from '@shared/citations'
 import type { CompanyMessage } from '@shared/types'
 import { SpeakerBadge } from './SpeakerBadge'
 import { ReasoningBlock } from './ReasoningBlock'
 import { Markdown } from './Markdown'
+import { SourceList } from './SourceList'
 import { UserBubble } from './UserBubble'
 import { relativeTime } from '@renderer/lib/format'
 import type { PendingCompanyTurn } from '@renderer/hooks/useCompanyChatStream'
@@ -25,6 +27,8 @@ export function CompanyTurn({ message }: CompanyTurnProps): React.JSX.Element {
     )
   }
 
+  const citations = message.citations ?? []
+
   return (
     <article className="space-y-2">
       <SpeakerBadge
@@ -39,12 +43,17 @@ export function CompanyTurn({ message }: CompanyTurnProps): React.JSX.Element {
         {message.reasoningContent ? <ReasoningBlock reasoning={message.reasoningContent} /> : null}
 
         <div className="text-[length:var(--text-body)] text-ink">
-          <Markdown>{message.content}</Markdown>
+          <Markdown>{linkCitations(message.content, citations)}</Markdown>
         </div>
+
+        <SourceList citations={citations} />
 
         <div className="flex items-center gap-3 text-[length:var(--text-micro)] text-faint tabular-nums">
           <span>{relativeTime(message.createdAt)}</span>
           {message.durationMs ? <span>{(message.durationMs / 1000).toFixed(1)}s</span> : null}
+          {message.tokensUsed ? (
+            <span>{message.tokensUsed.toLocaleString()} tokens</span>
+          ) : null}
         </div>
       </div>
     </article>

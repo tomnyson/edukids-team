@@ -9,8 +9,9 @@
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "test:browser": "electron test/electron/search-browser.cjs",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "node test/db-companies.test.cjs && node test/stream-parser.test.cjs && node test/orchestrator.test.cjs && node test/opencode.test.cjs && node test/model-catalog.test.cjs && node test/agy-stream.test.cjs && node test/codex-stream.test.cjs && node test/cli-pick.test.cjs && node test/claude-model.test.cjs && node test/member-form.test.cjs && node test/meeting-folder.test.cjs && node test/mention.test.cjs && node test/mentioned-members.test.cjs && node test/meeting-context.test.cjs && node test/company-summaries.test.cjs",
+    "test": "node test/db-companies.test.cjs && node test/stream-parser.test.cjs && node test/orchestrator.test.cjs && node test/opencode.test.cjs && node test/model-catalog.test.cjs && node test/agy-stream.test.cjs && node test/codex-stream.test.cjs && node test/cli-pick.test.cjs && node test/claude-model.test.cjs && node test/member-form.test.cjs && node test/meeting-folder.test.cjs && node test/mention.test.cjs && node test/mentioned-members.test.cjs && node test/meeting-context.test.cjs && node test/company-summaries.test.cjs && node test/wav.test.cjs && node test/dictation.test.cjs && node test/voice.test.cjs && node test/voice-sweep.test.cjs && node test/permissions.test.cjs && node test/skills.test.cjs && node test/member-skills.test.cjs && node test/skill-library.test.cjs && node test/skill-selection.test.cjs && node test/prompt-queue.test.cjs && node test/queue-runner.test.cjs && node test/solo-ask.test.cjs && node test/queue-view.test.cjs && node test/claude-runner.test.cjs && node test/secret-box.test.cjs && node test/openai-stream.test.cjs && node test/single-chat.test.cjs && node test/url-guard.test.cjs && node test/search-queries.test.cjs && node test/search-context.test.cjs && node test/search-backends.test.cjs && node test/member-proposal.test.cjs && node test/office-state.test.cjs",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
@@ -26,12 +27,16 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
     "better-sqlite3": "^13.0.3",
     "highlight.js": "^11.12.0",
     "lucide-react": "^1.33.0",
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "three": "^0.187.0",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
@@ -42,6 +47,7 @@
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^5.1.1",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12",

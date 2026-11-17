@@ -21,8 +21,9 @@ const CANDIDATE_PATHS = (name: string): readonly string[] => {
   ]
 }
 
-// Local CLIs this app drives (opencode, agy, codex), resolved once per app lifetime
-export type CliName = 'opencode' | 'agy' | 'codex'
+// Local CLIs this app drives, resolved once per app lifetime. whisper-cpp is whisper-cli's name
+// in Homebrew installs from before the upstream rename
+export type CliName = 'opencode' | 'agy' | 'codex' | 'whisper-cli' | 'whisper-cpp'
 
 // npm's codex is a JS shim around a native binary that can go missing, leaving a copy that is
 // executable but fails every run; one that can't print its version is skipped

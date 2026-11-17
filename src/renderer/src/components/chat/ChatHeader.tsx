@@ -1,3 +1,4 @@
+import { APP_NAME } from '@shared/brand'
 import { ChevronDown, PanelLeftOpen } from 'lucide-react'
 import type { Company, Conversation } from '@shared/types'
 import { shortenPath } from '@renderer/lib/format'
@@ -13,6 +14,8 @@ interface ChatHeaderProps {
   readonly railHidden: boolean
   readonly onShowRail: () => void
   readonly onOpenCompany: () => void
+  /** The Chat / Office switch, for chats that have an office. */
+  readonly viewToggle?: React.ReactNode
 }
 
 /**
@@ -24,7 +27,8 @@ export function ChatHeader({
   company,
   railHidden,
   onShowRail,
-  onOpenCompany
+  onOpenCompany,
+  viewToggle
 }: ChatHeaderProps): React.JSX.Element {
   const members = company?.members ?? []
 
@@ -58,12 +62,10 @@ export function ChatHeader({
         {members.length > 0 ? (
           <AvatarStack members={members} size="xs" />
         ) : (
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-canvas">
-            <AppMark className="size-3.5" />
-          </span>
+          <AppMark className="size-5 shrink-0" />
         )}
         <h1 className="truncate text-[length:var(--text-ui)] font-semibold text-ink">
-          {company ? company.name : (conversation?.title ?? 'Claude')}
+          {company ? company.name : (conversation?.title ?? APP_NAME)}
         </h1>
         {company ? (
           <span className="shrink-0 text-[length:var(--text-micro)] text-faint">
@@ -73,7 +75,8 @@ export function ChatHeader({
         <ChevronDown aria-hidden className="size-3.5 shrink-0 text-faint" />
       </button>
 
-      <div className="flex min-w-0 justify-end">
+      <div className="flex min-w-0 items-center justify-end gap-3">
+        {viewToggle}
         {conversation ? (
           <span
             title={conversation.cwd}

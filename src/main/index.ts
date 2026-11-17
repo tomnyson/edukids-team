@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { closeDb, getDb } from './db/connection'
 import { abortAllRuns, registerIpcHandlers } from './ipc/register'
+import { installPermissionPolicy } from './security/permissions'
 import { applyTheme } from './settings/store'
 
 let mainWindow: BrowserWindow | null = null
@@ -61,6 +62,8 @@ app.whenReady().then(() => {
   // Before the first paint, so the traffic lights match the chosen theme.
   applyTheme()
 
+  // Before any page loads, so the renderer never runs under Electron's allow-all default
+  installPermissionPolicy()
   registerIpcHandlers(() => mainWindow)
   createWindow()
 

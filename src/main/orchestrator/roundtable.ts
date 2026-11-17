@@ -1,3 +1,4 @@
+import type { SearchMode } from '@shared/search'
 import type { Company, CompanyMember, CompanyStreamEvent } from '@shared/types'
 import { getCompanySummary, insertCompanyMessage, listCompanyMessages } from '../db/companies'
 import { dispatchLLM } from '../providers/gateway'
@@ -6,11 +7,14 @@ import { memberErrorMessage } from './member-error'
 import { buildContextMessages } from './meeting-context'
 import { meetingFolderNote } from './meeting-folder'
 import { DIRECT_REPLY_INSTRUCTION } from './mentions'
+import { openProposalStep, saveProposal } from './proposal-step'
 
 export interface OrchestrationOptions {
   readonly company: Company
   readonly conversationId: number
   readonly userPrompt: string
+  /** A direct chat only: whether this prompt is answered from the web. */
+  readonly searchMode?: SearchMode
   /** The project folder the code goes into; resolved from the DB, never from the renderer. */
   readonly folder: string
   readonly signal: AbortSignal
@@ -50,12 +54,18 @@ export async function runRoundtable(
       description: `${member.name} is speaking as ${member.role}...`
     })
 
+    // Framing is where the CEO sizes up the task, so it is the one turn that may ask for a new member
+    const proposing = phase === 'framing' ? openProposalStep(company, conversationId, member) : null
+
     const contextMessages: ChatMessage[] = [
       ...buildContextMessages(
         listCompanyMessages(conversationId),
         getCompanySummary(conversationId)
       ),
-      { role: 'user', content: `[Instruction]: ${instruction}` }
+      {
+        role: 'user',
+        content: `[Instruction]: ${instruction}${proposing ? `\n\n${proposing.instruction}` : ''}`
+      }
     ]
 
     let streamedReasoning = ''
@@ -101,6 +111,9 @@ export async function runRoundtable(
       throw new Error(memberErrorMessage(member, error), { cause: error })
     })
 
+    const reply = result.text || streamedContent
+    const captured = proposing ? proposing.capture(reply) : { content: reply, draft: null }
+
     const savedMsg = insertCompanyMessage({
       conversationId,
       senderType:
@@ -108,7 +121,7 @@ export async function runRoundtable(
           ? 'moderator'
           : 'member',
       memberId: member.id,
-      content: result.text || streamedContent,
+      content: captured.content,
       reasoningContent: result.reasoningText || streamedReasoning || null,
       stepIndex: currentStep++,
       phase,
@@ -122,6 +135,14 @@ export async function runRoundtable(
       memberId: member.id,
       message: savedMsg
     })
+
+    if (captured.draft) {
+      onEvent({
+        type: 'proposal',
+        conversationId,
+        proposal: saveProposal(captured.draft, savedMsg, company.id)
+      })
+    }
   }
 
   // An @mention is a direct question: only the members it names reply, with no meeting around it

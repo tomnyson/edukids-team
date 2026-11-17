@@ -166,6 +166,14 @@ body {
   font-weight: 600;
 }
 
+/* A prompt joining the queue rises into its slot. */
+@keyframes queue-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

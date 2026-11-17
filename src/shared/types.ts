@@ -134,12 +134,21 @@ export interface AskResult {
   readonly conversation: Conversation
 }
 
-/** Push events emitted while a run is in flight. */
+/**
+ * Push events emitted while a run is in flight. Every run sends `started` then `settled`, so the
+ * renderer can draw a queued prompt's turn without having sent it itself.
+ */
 export type StreamEvent =
-  | { readonly type: 'started'; readonly conversationId: number }
+  | { readonly type: 'started'; readonly conversationId: number; readonly prompt: string }
   | { readonly type: 'delta'; readonly conversationId: number; readonly text: string }
   | { readonly type: 'tool'; readonly conversationId: number; readonly name: string }
-  | { readonly type: 'settled'; readonly conversationId: number }
+  | {
+      readonly type: 'settled'
+      readonly conversationId: number
+      /** The stored turn, when the run got far enough to store one. */
+      readonly message: Message | null
+      readonly error: AppError | null
+    }
 
 /** What happened when a file path from the transcript was opened. */
 export interface OpenedFile {
@@ -160,6 +169,10 @@ export interface ProjectPatch {
   readonly defaultModel?: ModelId | null
   readonly defaultEffort?: EffortId | null
 }
+
+export type { Citation } from './citations'
+import type { Citation } from './citations'
+import type { MemberProposal } from './proposals'
 
 export type ProviderId =
   | 'xai'
@@ -215,6 +228,8 @@ export interface CompanyMember {
   readonly orderIndex: number
   readonly avatarColor: string
   readonly createdAt: string
+  /** Attached skills as `user:<dir>` / `app:<dir>` refs, in the order chosen. */
+  readonly skillRefs: readonly string[]
 }
 
 export interface CompanyMessage {
@@ -231,6 +246,8 @@ export interface CompanyMessage {
   readonly phase: string | null
   readonly durationMs: number | null
   readonly tokensUsed: number | null
+  /** The pages a searched reply was written from; absent or empty for any other message. */
+  readonly citations?: readonly Citation[]
   readonly createdAt: string
 }
 
@@ -279,5 +296,6 @@ export type CompanyStreamEvent =
   | { readonly type: 'delta'; readonly conversationId: number; readonly memberId: number | null; readonly text: string }
   | { readonly type: 'phase'; readonly conversationId: number; readonly phase: string; readonly description: string }
   | { readonly type: 'member-done'; readonly conversationId: number; readonly memberId: number | null; readonly message: CompanyMessage }
+  | { readonly type: 'proposal'; readonly conversationId: number; readonly proposal: MemberProposal }
   | { readonly type: 'finished'; readonly conversationId: number }
   | { readonly type: 'error'; readonly conversationId: number; readonly error: AppError }

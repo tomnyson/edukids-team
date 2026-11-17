@@ -1,8 +1,16 @@
 import { useState } from 'react'
 import { Check, ShieldAlert } from 'lucide-react'
-import { VOICE_BACKENDS, VOICE_MODELS, type VoiceBackendId } from '@shared/settings'
+import {
+  VOICE_BACKENDS,
+  VOICE_MODELS,
+  type VoiceBackendId,
+  type VoiceModelId
+} from '@shared/settings'
+import type { VoiceStatus } from '@shared/voice'
 import { useSettings } from '@renderer/hooks/settingsContext'
+import { useVoiceModels } from '@renderer/hooks/useVoiceModels'
 import { Picker, Row, type Choice } from './controls'
+import { VoiceLocalSetup } from './VoiceLocalSetup'
 
 const LANGUAGES: readonly Choice<string>[] = [
   { id: 'auto', label: 'Detect automatically' },
@@ -12,7 +20,14 @@ const LANGUAGES: readonly Choice<string>[] = [
   { id: 'zh', label: '中文' }
 ]
 
-const MODEL_CHOICES: readonly Choice<string>[] = VOICE_MODELS.map((id) => ({ id, label: id }))
+/** Each model with its size, and a mark on the ones already on disk. */
+function modelChoices(status: VoiceStatus | null): readonly Choice<VoiceModelId>[] {
+  return VOICE_MODELS.map((id) => {
+    const model = status?.models.find((entry) => entry.model === id)
+    if (!model) return { id, label: id }
+    return { id, label: `${id} · ${model.approxMib} MB${model.installed ? ' · downloaded' : ''}` }
+  })
+}
 
 const BACKEND_CHOICES: readonly Choice<VoiceBackendId>[] = VOICE_BACKENDS.map((backend) => ({
   id: backend.id,
@@ -27,6 +42,7 @@ export function VoicePane(): React.JSX.Element {
   const { settings, update, setVoiceKey } = useSettings()
   const [draft, setDraft] = useState('')
   const [note, setNote] = useState<string | null>(null)
+  const local = useVoiceModels()
 
   const save = async (): Promise<void> => {
     const result = await setVoiceKey(draft)
@@ -65,17 +81,20 @@ export function VoicePane(): React.JSX.Element {
       </Row>
 
       {cloud ? null : (
-        <Row
-          label="Local model"
-          hint="Bigger is slower and more accurate. Vietnamese needs small or above."
-        >
-          <Picker
+        <>
+          <Row
             label="Local model"
-            value={settings.voice.localModel}
-            options={MODEL_CHOICES}
-            onChange={(value) => void update({ voice: { localModel: value } })}
-          />
-        </Row>
+            hint="Bigger is slower and more accurate. Vietnamese needs small or above."
+          >
+            <Picker<VoiceModelId>
+              label="Local model"
+              value={settings.voice.localModel}
+              options={modelChoices(local.status)}
+              onChange={(value) => void update({ voice: { localModel: value } })}
+            />
+          </Row>
+          <VoiceLocalSetup voice={local} model={settings.voice.localModel} />
+        </>
       )}
 
       {cloud ? (

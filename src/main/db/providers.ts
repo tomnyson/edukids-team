@@ -1,4 +1,6 @@
 import type { ProviderConfig, ProviderId } from '@shared/types'
+import { keychainCipher } from '../security/keychain'
+import { openSecret, sealSecret } from '../security/secret-box'
 import { getDb } from './connection'
 
 interface ProviderRow {
@@ -8,9 +10,10 @@ interface ProviderRow {
   enabled: number
 }
 
+/** Keys are sealed at rest; everything above this module sees the usable key. */
 const toProviderConfig = (row: ProviderRow): ProviderConfig => ({
   id: row.id as ProviderId,
-  apiKey: row.api_key,
+  apiKey: openSecret(row.api_key, keychainCipher),
   baseUrl: row.base_url,
   enabled: Boolean(row.enabled)
 })
@@ -29,7 +32,9 @@ export function getProviderConfig(providerId: ProviderId): ProviderConfig | null
   return row ? toProviderConfig(row) : null
 }
 
+/** Throws when there is a key to save and no keychain to seal it with. */
 export function setProviderConfig(config: ProviderConfig): void {
+  const apiKey = config.apiKey ? sealSecret(config.apiKey, keychainCipher) : null
   getDb()
     .prepare(`
       INSERT INTO providers_config (id, api_key, base_url, enabled, updated_at)
@@ -40,5 +45,5 @@ export function setProviderConfig(config: ProviderConfig): void {
         enabled = excluded.enabled,
         updated_at = datetime('now')
     `)
-    .run(config.id, config.apiKey, config.baseUrl, config.enabled ? 1 : 0)
+    .run(config.id, apiKey, config.baseUrl, config.enabled ? 1 : 0)
 }

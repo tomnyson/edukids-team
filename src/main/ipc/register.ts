@@ -5,25 +5,18 @@ import { version as appVersion } from '../../../package.json'
 import { IPC, LIMITS } from '@shared/ipc'
 import type {
   AppError,
-  AskRequest,
-  AskResult,
   Conversation,
   CreateConversationInput,
   Message,
   Project,
   ProjectPatch,
-  Result,
-  StreamEvent
+  Result
 } from '@shared/types'
-import { isEffortId, isModelId } from '@shared/types'
 import {
   createConversation,
   deleteConversation,
-  findConversation,
-  insertHistory,
   listConversations,
   listMessages,
-  markSessionStarted,
   renameConversation
 } from '../db/queries'
 import {
@@ -34,8 +27,6 @@ import {
   updateProject
 } from '../db/projects'
 import { resolveClaudeBinary } from '../claude/environment'
-import { runClaude } from '../claude/runner'
-import { composePrompt, validateAttachments } from '../claude/attachments'
 import { openFile } from '../files/open'
 import {
   getSettingsView,
@@ -44,9 +35,13 @@ import {
   updateSettings
 } from '../settings/store'
 import { registerCompanyIpcHandlers, abortAllCompanyRuns } from './companies'
-
-/** One in-flight run per conversation; a second ask replaces the first. */
-const inFlight = new Map<number, AbortController>()
+import { companyQueueControls, dropCompanyQueue } from './company-queue'
+import { registerQueueIpcHandlers } from './queue'
+import { dropSoloQueue, freezeSoloQueue, registerSoloIpcHandlers, soloQueueControls } from './solo'
+import { abortVoiceWork, registerVoiceIpcHandlers } from './voice'
+import { registerSkillIpcHandlers } from './skills'
+import { registerSearchIpcHandlers } from './search'
+import { registerProposalIpcHandlers } from './proposals'
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data })
 const fail = (error: AppError): Result<never> => ({ ok: false, error })
@@ -75,10 +70,12 @@ function requireId(value: unknown): number {
 
 export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void {
   registerCompanyIpcHandlers(getWindow)
-
-  const emit = (event: StreamEvent): void => {
-    getWindow()?.webContents.send(IPC.claudeStream, event)
-  }
+  registerVoiceIpcHandlers(getWindow)
+  registerSkillIpcHandlers(getWindow)
+  registerSearchIpcHandlers()
+  registerProposalIpcHandlers()
+  registerSoloIpcHandlers(getWindow)
+  registerQueueIpcHandlers({ solo: soloQueueControls, company: companyQueueControls })
 
   ipcMain.handle(
     IPC.systemInfo,
@@ -87,7 +84,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
 
   /**
    * Thin on purpose: the dialog is a native sheet that cannot be driven from a
-   * test, so no logic lives here. Validation happens in claude:ask, which is.
+   * test, so no logic lives here. Validation happens when the prompt is asked or queued.
    */
   ipcMain.handle(
     IPC.filesPick,
@@ -229,7 +226,9 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
     IPC.conversationsDelete,
     guard((_event, rawId: unknown) => {
       const id = requireId(rawId)
-      inFlight.get(id)?.abort()
+      // Nothing queued for a deleted conversation may run
+      dropSoloQueue(id)
+      dropCompanyQueue(id)
       return ok(deleteConversation(id))
     })
   )
@@ -238,108 +237,12 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
     IPC.messagesList,
     guard((_event, rawId: unknown) => ok<readonly Message[]>(listMessages(requireId(rawId))))
   )
-
-  ipcMain.handle(
-    IPC.claudeCancel,
-    guard((_event, rawId: unknown) => {
-      const controller = inFlight.get(requireId(rawId))
-      controller?.abort()
-      return ok(controller !== undefined)
-    })
-  )
-
-  ipcMain.handle(
-    IPC.claudeAsk,
-    guard(async (_event, request: AskRequest) => {
-      const conversationId = requireId(request?.conversationId)
-      const prompt = typeof request?.prompt === 'string' ? request.prompt.trim() : ''
-
-      if (!prompt) return fail({ code: 'INVALID_INPUT', message: 'Type something first.' })
-      if (prompt.length > LIMITS.promptMaxLength) {
-        return fail({
-          code: 'INVALID_INPUT',
-          message: `That prompt is too long (limit ${LIMITS.promptMaxLength.toLocaleString()} characters).`
-        })
-      }
-
-      // Both of these end up in argv, so neither is taken on trust.
-      const model = request?.model ?? null
-      if (model !== null && !isModelId(model)) {
-        return fail({ code: 'INVALID_INPUT', message: `Unknown model: ${String(model)}` })
-      }
-
-      // A bad --effort does not fail the run: the CLI warns and quietly uses its
-      // default, so the app would record a level that never ran. Stop it here.
-      const effort = request?.effort ?? null
-      if (effort !== null && !isEffortId(effort)) {
-        return fail({ code: 'INVALID_INPUT', message: `Unknown effort: ${String(effort)}` })
-      }
-
-      const attachments = validateAttachments(request?.attachments)
-      if (!attachments.ok) return fail(attachments.error)
-
-      const composed = composePrompt(prompt, attachments.paths)
-
-      const conversation = findConversation(conversationId)
-      if (!conversation)
-        return fail({ code: 'NOT_FOUND', message: 'That conversation no longer exists.' })
-
-      inFlight.get(conversationId)?.abort()
-      const controller = new AbortController()
-      inFlight.set(conversationId, controller)
-      emit({ type: 'started', conversationId })
-
-      try {
-        const outcome = await runClaude({
-          prompt: composed.prompt,
-          sessionId: conversation.sessionId,
-          resume: conversation.sessionStarted,
-          cwd: conversation.cwd,
-          model,
-          effort,
-          addDirs: composed.addDirs,
-          signal: controller.signal,
-          onDelta: (text) => emit({ type: 'delta', conversationId, text }),
-          onTool: (name) => emit({ type: 'tool', conversationId, name })
-        })
-
-        const cliRan =
-          outcome.error?.code !== 'BINARY_NOT_FOUND' && outcome.error?.code !== 'SPAWN_FAILED'
-        if (cliRan && !conversation.sessionStarted) markSessionStarted(conversationId)
-
-        const message = insertHistory({
-          conversationId,
-          // Stored as sent, so the transcript shows the @mentions that ran.
-          prompt: composed.prompt,
-          response: outcome.text,
-          model,
-          effort,
-          error: outcome.error ? formatError(outcome.error) : null,
-          durationMs: outcome.durationMs,
-          costUsd: outcome.costUsd
-        })
-
-        const refreshed = findConversation(conversationId)
-        if (!refreshed)
-          return fail({ code: 'NOT_FOUND', message: 'That conversation was deleted mid-run.' })
-
-        return outcome.error && !outcome.text
-          ? fail(outcome.error)
-          : ok<AskResult>({ message, conversation: refreshed })
-      } finally {
-        if (inFlight.get(conversationId) === controller) inFlight.delete(conversationId)
-        emit({ type: 'settled', conversationId })
-      }
-    })
-  )
 }
 
 /** Aborts every running CLI process; called on quit so none are orphaned. */
 export function abortAllRuns(): void {
+  // Frozen first, so no queued prompt starts while the running ones wind down
+  freezeSoloQueue()
   abortAllCompanyRuns()
-  for (const controller of inFlight.values()) controller.abort()
-  inFlight.clear()
+  abortVoiceWork()
 }
-
-const formatError = (error: AppError): string =>
-  error.detail ? `${error.message}\n\n${error.detail}` : error.message

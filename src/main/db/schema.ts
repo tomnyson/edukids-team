@@ -147,6 +147,38 @@ const MIGRATIONS: readonly Migration[] = [
     covered_until_id INTEGER NOT NULL,
     updated_at       TEXT    NOT NULL DEFAULT (datetime('now'))
   );
+  `,
+  // Skills attached to a company member, by ref (`user:<dir>` or `app:<dir>`), in the order chosen
+  `
+  CREATE TABLE member_skills (
+    member_id INTEGER NOT NULL REFERENCES company_members(id) ON DELETE CASCADE,
+    skill_ref TEXT    NOT NULL,
+    PRIMARY KEY (member_id, skill_ref)
+  );
+  CREATE INDEX idx_member_skills_ref ON member_skills(skill_ref);
+  `,
+  // The pages a searched reply was written from, as a JSON array; null for every other message
+  `
+  ALTER TABLE company_messages ADD COLUMN citations TEXT;
+  `,
+  // New members the CEO proposed for a task; nothing joins the team until the user approves
+  `
+  CREATE TABLE member_proposals (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id   INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    message_id        INTEGER NOT NULL REFERENCES company_messages(id) ON DELETE CASCADE,
+    company_id        INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    name              TEXT    NOT NULL,
+    role              TEXT    NOT NULL,
+    system_prompt     TEXT    NOT NULL,
+    provider          TEXT    NOT NULL,
+    model_id          TEXT    NOT NULL,
+    reason            TEXT    NOT NULL DEFAULT '',
+    status            TEXT    NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+    created_member_id INTEGER REFERENCES company_members(id) ON DELETE SET NULL,
+    created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX idx_member_proposals_conv ON member_proposals(conversation_id, id);
   `
 ]
 

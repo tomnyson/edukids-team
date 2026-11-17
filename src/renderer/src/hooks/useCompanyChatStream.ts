@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import type { SearchMode } from '@shared/search'
 import type { Company, CompanyMessage, CompanyStreamEvent, AppError } from '@shared/types'
 
 export interface PendingCompanyTurn {
@@ -10,35 +11,44 @@ export interface PendingCompanyTurn {
   readonly isStreaming: boolean
 }
 
+interface UseCompanyChatStream {
+  readonly messages: readonly CompanyMessage[]
+  readonly pending: PendingCompanyTurn | null
+  readonly activeSpeaker: string | null
+  readonly phaseDescription: string | null
+  readonly error: AppError | null
+  send: (prompt: string, searchMode?: SearchMode) => Promise<boolean>
+  stop: () => Promise<void>
+  dismissError: () => void
+}
+
+/** A meeting's transcript and live turn; whether one is running comes from its queue. */
 export function useCompanyChatStream(
   conversationId: number | null,
   company: Company | null
-) {
+): UseCompanyChatStream {
   const [messages, setMessages] = useState<readonly CompanyMessage[]>([])
   const [pending, setPending] = useState<PendingCompanyTurn | null>(null)
   const [activeSpeaker, setActiveSpeaker] = useState<string | null>(null)
   const [phaseDescription, setPhaseDescription] = useState<string | null>(null)
   const [error, setError] = useState<AppError | null>(null)
-  const [busy, setBusy] = useState(false)
 
-  const loadMessages = useCallback(async () => {
-    if (conversationId === null) {
-      setMessages([])
-      return
-    }
+  const loadMessages = useCallback(async (): Promise<void> => {
+    if (conversationId === null) return
     const res = await window.api.companies.listMessages(conversationId)
-    if (res.ok) {
-      setMessages(res.data)
-    }
+    if (res.ok) setMessages(res.data)
   }, [conversationId])
 
   useEffect(() => {
-    loadMessages()
-  }, [loadMessages])
-
-  // Handle stream events
-  const pendingRef = useRef<PendingCompanyTurn | null>(null)
-  pendingRef.current = pending
+    if (conversationId === null) return
+    let cancelled = false
+    void window.api.companies.listMessages(conversationId).then((res) => {
+      if (!cancelled && res.ok) setMessages(res.data)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [conversationId])
 
   useEffect(() => {
     const unsubscribe = window.api.companies.onStreamEvent((event: CompanyStreamEvent) => {
@@ -46,7 +56,8 @@ export function useCompanyChatStream(
 
       switch (event.type) {
         case 'started': {
-          setBusy(true)
+          // Only a meeting's end sends `error`, so a member starting means a fresh meeting
+          setError(null)
           setActiveSpeaker(event.memberName)
           const member = company?.members?.find((m) => m.id === event.memberId)
           setPending({
@@ -90,19 +101,19 @@ export function useCompanyChatStream(
           break
         }
 
+        // Whether a meeting is running comes from the queue snapshot; these only tidy the view
         case 'finished': {
-          setBusy(false)
           setActiveSpeaker(null)
           setPhaseDescription(null)
           setPending(null)
-          loadMessages()
+          void loadMessages()
           break
         }
 
         case 'error': {
-          setBusy(false)
           setActiveSpeaker(null)
           setPhaseDescription(null)
+          setPending(null)
           setError(event.error)
           break
         }
@@ -114,16 +125,18 @@ export function useCompanyChatStream(
     }
   }, [conversationId, company, loadMessages])
 
+  /** Queues the prompt; true once the main process took it, so the composer may clear. */
   const send = useCallback(
-    async (prompt: string) => {
-      if (!company || conversationId === null) return
-      setError(null)
-      setBusy(true)
-      const res = await window.api.companies.askStream(company.id, conversationId, prompt)
-      if (!res.ok) {
-        setError(res.error)
-        setBusy(false)
-      }
+    async (prompt: string, searchMode: SearchMode = 'off'): Promise<boolean> => {
+      if (!company || conversationId === null) return false
+      const res = await window.api.companies.askStream(
+        company.id,
+        conversationId,
+        prompt,
+        searchMode
+      )
+      if (!res.ok) setError(res.error)
+      return res.ok
     },
     [company, conversationId]
   )
@@ -131,7 +144,6 @@ export function useCompanyChatStream(
   const stop = useCallback(async () => {
     if (conversationId === null) return
     await window.api.companies.stopStream(conversationId)
-    setBusy(false)
     setActiveSpeaker(null)
     setPhaseDescription(null)
     setPending(null)
@@ -142,7 +154,6 @@ export function useCompanyChatStream(
     pending,
     activeSpeaker,
     phaseDescription,
-    busy,
     error,
     send,
     stop,

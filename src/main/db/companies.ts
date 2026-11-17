@@ -10,7 +10,9 @@ import type {
   UpdateCompanyInput,
   UpdateMemberInput
 } from '@shared/types'
+import { parseCitations } from '@shared/citations'
 import { getDb } from './connection'
+import { replaceMemberSkills, skillRefsByMember } from './member-skills'
 
 interface CompanyRow {
   id: number
@@ -52,10 +54,13 @@ interface MessageRow {
   phase: string | null
   duration_ms: number | null
   tokens_used: number | null
+  citations: string | null
   created_at: string
 }
 
-const toCompanyMember = (row: MemberRow): CompanyMember => ({
+const NO_SKILLS: readonly string[] = []
+
+const toCompanyMember = (row: MemberRow, skillRefs = NO_SKILLS): CompanyMember => ({
   id: row.id,
   companyId: row.company_id,
   name: row.name,
@@ -66,7 +71,8 @@ const toCompanyMember = (row: MemberRow): CompanyMember => ({
   temperature: row.temperature,
   orderIndex: row.order_index,
   avatarColor: row.avatar_color,
-  createdAt: row.created_at
+  createdAt: row.created_at,
+  skillRefs
 })
 
 const toCompany = (row: CompanyRow, members?: readonly CompanyMember[]): Company => ({
@@ -96,6 +102,7 @@ const toCompanyMessage = (row: MessageRow): CompanyMessage => ({
   phase: row.phase,
   durationMs: row.duration_ms,
   tokensUsed: row.tokens_used,
+  citations: parseCitations(row.citations),
   createdAt: row.created_at
 })
 
@@ -103,7 +110,30 @@ export function listCompanyMembers(companyId: number): readonly CompanyMember[] 
   const rows = getDb()
     .prepare('SELECT * FROM company_members WHERE company_id = ? ORDER BY order_index, id')
     .all(companyId) as MemberRow[]
-  return rows.map(toCompanyMember)
+  const skills = skillRefsByMember(
+    getDb(),
+    rows.map((row) => row.id)
+  )
+  return rows.map((row) => toCompanyMember(row, skills.get(row.id)))
+}
+
+function memberRow(id: number): MemberRow | undefined {
+  return getDb().prepare('SELECT * FROM company_members WHERE id = ?').get(id) as
+    | MemberRow
+    | undefined
+}
+
+function findMember(id: number): CompanyMember {
+  const row = memberRow(id)
+  if (!row) throw new Error(`Member ${id} does not exist.`)
+  return toCompanyMember(row, skillRefsByMember(getDb(), [id]).get(id))
+}
+
+/** Replaces a member's skills with `refs` (already validated); null when there is no such member. */
+export function setMemberSkills(memberId: number, refs: readonly string[]): CompanyMember | null {
+  if (!memberRow(memberId)) return null
+  replaceMemberSkills(getDb(), memberId, refs)
+  return findMember(memberId)
 }
 
 export function listCompanies(): readonly Company[] {
@@ -252,8 +282,7 @@ export function updateCompanyMember(id: number, patch: UpdateMemberInput): Compa
     getDb().prepare(`UPDATE company_members SET ${fields.join(', ')} WHERE id = ?`).run(...params)
   }
 
-  const row = getDb().prepare('SELECT * FROM company_members WHERE id = ?').get(id) as MemberRow
-  return toCompanyMember(row)
+  return findMember(id)
 }
 
 export function deleteCompanyMember(id: number): void {
@@ -283,8 +312,8 @@ export function insertCompanyMessage(
   const res = getDb()
     .prepare(`
       INSERT INTO company_messages (
-        conversation_id, sender_type, member_id, content, reasoning_content, step_index, phase, duration_ms, tokens_used
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        conversation_id, sender_type, member_id, content, reasoning_content, step_index, phase, duration_ms, tokens_used, citations
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       message.conversationId,
@@ -295,7 +324,8 @@ export function insertCompanyMessage(
       message.stepIndex,
       message.phase,
       message.durationMs,
-      message.tokensUsed
+      message.tokensUsed,
+      message.citations?.length ? JSON.stringify(message.citations) : null
     )
 
   const row = getDb()

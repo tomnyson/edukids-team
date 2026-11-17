@@ -8,7 +8,7 @@ const db = new Database(':memory:')
 db.pragma('foreign_keys = ON')
 migrate(db)
 
-assert.strictEqual(db.pragma('user_version', { simple: true }), 6)
+assert.strictEqual(db.pragma('user_version', { simple: true }), 9)
 
 const conversationId = db
   .prepare("INSERT INTO conversations (session_id, title, cwd) VALUES ('s1', 't', '/tmp')")
@@ -34,6 +34,6 @@ assert.strictEqual(db.prepare('SELECT COUNT(*) AS n FROM company_summaries').get
 
 // Running migrate again on a current database is a no-op
 migrate(db)
-assert.strictEqual(db.pragma('user_version', { simple: true }), 6)
+assert.strictEqual(db.pragma('user_version', { simple: true }), 9)
 
 console.log('company-summaries tests passed')

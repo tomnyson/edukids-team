@@ -7,6 +7,7 @@ import { memberErrorMessage } from './member-error'
 import { buildContextMessages } from './meeting-context'
 import { meetingFolderNote } from './meeting-folder'
 import { DIRECT_REPLY_INSTRUCTION } from './mentions'
+import { openProposalStep, saveProposal } from './proposal-step'
 
 export async function runPipeline(
   options: OrchestrationOptions,
@@ -40,12 +41,19 @@ export async function runPipeline(
       description: `${member.name} is working on ${phase}...`
     })
 
+    // Planning is where the leader sizes up the task, so it is the one step that may ask for a new member
+    const proposing =
+      phase === 'planning' ? openProposalStep(company, conversationId, member) : null
+
     const contextMessages: ChatMessage[] = [
       ...buildContextMessages(
         listCompanyMessages(conversationId),
         getCompanySummary(conversationId)
       ),
-      { role: 'user', content: `[Pipeline Step: ${phase}]: ${instruction}` }
+      {
+        role: 'user',
+        content: `[Pipeline Step: ${phase}]: ${instruction}${proposing ? `\n\n${proposing.instruction}` : ''}`
+      }
     ]
 
     let streamedReasoning = ''
@@ -91,7 +99,9 @@ export async function runPipeline(
       throw new Error(memberErrorMessage(member, error), { cause: error })
     })
 
-    const finalContent = result.text || streamedContent
+    const reply = result.text || streamedContent
+    const captured = proposing ? proposing.capture(reply) : { content: reply, draft: null }
+    const finalContent = captured.content
 
     const savedMsg = insertCompanyMessage({
       conversationId,
@@ -111,6 +121,14 @@ export async function runPipeline(
       memberId: member.id,
       message: savedMsg
     })
+
+    if (captured.draft) {
+      onEvent({
+        type: 'proposal',
+        conversationId,
+        proposal: saveProposal(captured.draft, savedMsg, company.id)
+      })
+    }
 
     return finalContent
   }

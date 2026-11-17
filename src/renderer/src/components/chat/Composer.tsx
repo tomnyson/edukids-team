@@ -1,14 +1,41 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowUp, Folder, Plus, Square, X, Flame, AtSign } from 'lucide-react'
-import type { EffortId, ModelId, Company, CompanyMember } from '@shared/types'
+import { ArrowUp, Folder, ListPlus, Plus, Square, X, Flame, AtSign } from 'lucide-react'
+import type { EffortId, ModelId, Company, CompanyMember, ProviderId } from '@shared/types'
+import type { SearchMode } from '@shared/search'
+import { directMember } from '@shared/direct-chat'
+import { isDirectChat } from '@renderer/lib/team'
 import { shortenPath } from '@renderer/lib/format'
 import { useSettings } from '@renderer/hooks/settingsContext'
+import { useDictation, useDictationShortcut, type Dictation } from '@renderer/hooks/useDictation'
 import { BotAvatar } from '@renderer/components/ui/BotFace'
 import { AttachmentChips } from './Attachments'
+import { insertDictation } from './dictation'
+import { MicButton } from './MicButton'
 import { RunSettings } from './RunSettings'
+import { DirectModelPicker } from './DirectModelPicker'
+import { SearchToggle } from './SearchToggle'
 import { insertMention, matchMembers, mentionAt, startMention, type ComposerEdit } from './mention'
 
 const MAX_ROWS_PX = 240
+
+/** `0:07`, for the recording clock in the status line. */
+function clock(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+/** What the status line says while dictating; null when the mic is idle. */
+function dictationStatus(dictation: Dictation): string | null {
+  switch (dictation.phase) {
+    case 'starting':
+      return 'Opening the microphone…'
+    case 'recording':
+      return `Listening ${clock(dictation.seconds)} · ⌘⇧M to insert · esc to discard`
+    case 'transcribing':
+      return 'Transcribing…'
+    default:
+      return null
+  }
+}
 
 interface ComposerProps {
   /** True on an empty transcript, where the composer is the centred hero. */
@@ -22,7 +49,13 @@ interface ComposerProps {
   readonly effort: EffortId | null
   readonly company?: Company | null
   readonly onToggleFunMode?: () => void
-  readonly onSubmit: (prompt: string) => void
+  /** A direct chat's model was swapped from the composer. */
+  readonly onDirectModelChange?: (memberId: number, provider: ProviderId, modelId: string) => void
+  /** A direct chat only: whether the next prompt is answered from the web. */
+  readonly searchMode?: SearchMode
+  readonly onSearchModeChange?: (mode: SearchMode) => void
+  /** Resolves true once the prompt is taken; the text stays when it was refused. */
+  readonly onSubmit: (prompt: string) => Promise<boolean>
   readonly onCancel: () => void
   readonly onAttach: () => void
   readonly onRemoveAttachment: (path: string) => void
@@ -42,6 +75,9 @@ export function Composer({
   effort,
   company,
   onToggleFunMode,
+  onDirectModelChange,
+  searchMode = 'off',
+  onSearchModeChange,
   onSubmit,
   onCancel,
   onAttach,
@@ -51,6 +87,8 @@ export function Composer({
   onEffortChange
 }: ComposerProps): React.JSX.Element {
   const [value, setValue] = useState('')
+  // Blocks a double send while the main process decides whether the prompt is queued
+  const [submitting, setSubmitting] = useState(false)
   const [caret, setCaret] = useState(0)
   const [activeIndex, setActiveIndex] = useState(0)
   // The `@` whose list was closed with Escape; typing a new `@` opens the list again
@@ -76,17 +114,32 @@ export function Composer({
     if (!busy) textareaRef.current?.focus()
   }, [busy])
 
-  const sendOnEnter = useSettings().settings.sendKey === 'enter'
-  const sendHint = sendOnEnter ? '↵ to send' : '⌘↵ to send'
+  const { settings } = useSettings()
+  const sendOnEnter = settings.sendKey === 'enter'
+  const sendKey = sendOnEnter ? '↵' : '⌘↵'
+  // While a run is going, a send waits its turn behind it
+  const sendHint = busy ? `${sendKey} to queue` : `${sendKey} to send`
 
-  const submit = (): void => {
-    const trimmed = value.trim()
-    if (!trimmed || busy || disabled) return
-    onSubmit(trimmed)
-    setValue('')
+  const submit = async (): Promise<void> => {
+    const sent = value
+    const trimmed = sent.trim()
+    if (!trimmed || disabled || submitting) return
+    setSubmitting(true)
+    const accepted = await onSubmit(trimmed)
+    setSubmitting(false)
+    // Kept on a refusal, so a full queue never eats what was typed
+    if (accepted) setValue((current) => (current === sent ? '' : current))
   }
 
-  const members = company?.members ?? []
+  // The one model of a direct chat; null in a meeting and in a solo Claude session
+  const direct = company && isDirectChat(company) ? directMember(company) : null
+  // SearXNG is the default source and needs an instance before search can be switched on
+  const searchUnavailable =
+    settings.search.backend === 'searxng' && !settings.search.searxngUrl
+      ? 'Set up search in Settings → Search first.'
+      : null
+  // Nobody to mention when a single model answers
+  const members = isDirectChat(company) ? [] : (company?.members ?? [])
   const mention = mentionAt(value, caret)
   const suggestions = mention ? matchMembers(members, mention.text) : []
   const listOpen = mention !== null && suggestions.length > 0 && dismissedAt !== mention.start
@@ -100,6 +153,15 @@ export function Composer({
     setDismissedAt(null)
     textareaRef.current?.focus()
   }
+
+  // The transcript lands at the selection as it is when transcription ends, not when it began
+  const dictation = useDictation((text) => {
+    const node = textareaRef.current
+    applyEdit(
+      insertDictation(value, node?.selectionStart ?? caret, node?.selectionEnd ?? caret, text)
+    )
+  })
+  useDictationShortcut(dictation.toggle, !disabled || dictation.phase !== 'idle')
 
   const pickMember = (name: string): void => {
     if (mention) applyEdit(insertMention(value, mention, caret, name))
@@ -141,6 +203,11 @@ export function Composer({
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     // Vietnamese and other IME input commits with Enter — never read that as send.
     if (event.nativeEvent.isComposing) return
+    if (event.key === 'Escape' && dictation.phase !== 'idle') {
+      event.preventDefault()
+      dictation.cancel()
+      return
+    }
     // With the member list open, Enter picks a member instead of sending a bare `@`
     if (onListKey(event)) return
     if (event.key !== 'Enter') return
@@ -149,16 +216,20 @@ export function Composer({
     // ⌘↵ always sends; a bare Enter only when the setting says so.
     if (withModifier || (sendOnEnter && !event.shiftKey && !event.altKey)) {
       event.preventDefault()
-      submit()
+      void submit()
     }
   }
 
-  const status = busy ? (company ? `${company.name} is working…` : 'Claude is working…') : sendHint
+  const working = company ? `${company.name} is working…` : 'Claude is working…'
+  const status = dictationStatus(dictation) ?? (busy ? `${working} ${sendHint}` : sendHint)
 
   return (
     <div className={centered ? 'flex-[1.3] px-6 pt-1' : 'shrink-0 bg-canvas px-6 pt-2 pb-4'}>
       <div className="mx-auto w-full max-w-[var(--measure)] space-y-2">
         {notice ? <AttachNotice notice={notice} onDismiss={onDismissNotice} /> : null}
+        {dictation.error ? (
+          <AttachNotice notice={dictation.error} onDismiss={dictation.clearError} />
+        ) : null}
 
         <div className="relative rounded-[var(--radius-2xl)] border border-line bg-surface shadow-[0_10px_34px_-18px_var(--c-shadow)] transition-colors duration-[var(--duration-normal)] focus-within:border-line-strong">
           {listOpen ? (
@@ -217,12 +288,34 @@ export function Composer({
               placeholder={
                 disabled
                   ? 'No conversation open'
-                  : company
-                    ? `Ask ${company.name}…`
-                    : 'Ask Claude anything…'
+                  : busy
+                    ? 'Queue a follow-up…'
+                    : company
+                      ? `Ask ${company.name}…`
+                      : 'Ask Claude anything…'
               }
               className="selectable block min-h-9 flex-1 resize-none bg-transparent px-2 py-[0.4rem] text-[length:var(--text-body)] leading-[1.5] text-ink placeholder:text-faint focus-visible:outline-none disabled:cursor-not-allowed"
             />
+
+            {direct ? (
+              <div className="flex h-9 items-center gap-0.5">
+                {onSearchModeChange ? (
+                  <SearchToggle
+                    mode={searchMode}
+                    disabled={disabled}
+                    unavailable={searchUnavailable}
+                    onChange={onSearchModeChange}
+                  />
+                ) : null}
+                <DirectModelPicker
+                  member={direct}
+                  disabled={disabled}
+                  onChange={(provider, modelId) =>
+                    onDirectModelChange?.(direct.id, provider, modelId)
+                  }
+                />
+              </div>
+            ) : null}
 
             {company ? null : (
               <div className="flex h-9 items-center">
@@ -236,6 +329,8 @@ export function Composer({
               </div>
             )}
 
+            <MicButton phase={dictation.phase} disabled={disabled} onClick={dictation.toggle} />
+
             {busy ? (
               <button
                 type="button"
@@ -245,18 +340,14 @@ export function Composer({
                 <Square aria-hidden className="size-3 fill-current" />
                 Stop
               </button>
-            ) : (
-              <button
-                type="button"
-                onClick={submit}
-                disabled={!value.trim() || disabled}
-                title={`Send (${sendOnEnter ? '↵' : '⌘↵'})`}
-                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-canvas transition-all duration-[var(--duration-fast)] hover:bg-accent-bright active:scale-95 disabled:cursor-not-allowed disabled:bg-raised disabled:text-faint disabled:active:scale-100"
-              >
-                <ArrowUp aria-hidden className="size-[1.125rem]" strokeWidth={2.5} />
-                <span className="sr-only">Send</span>
-              </button>
-            )}
+            ) : null}
+
+            <SendButton
+              queues={busy}
+              sendKey={sendKey}
+              disabled={!value.trim() || disabled || submitting}
+              onClick={() => void submit()}
+            />
           </div>
         </div>
 
@@ -273,10 +364,49 @@ export function Composer({
               </span>
             ) : null}
           </div>
-          <span className="shrink-0 text-[length:var(--text-micro)] text-faint">{status}</span>
+          <span
+            className={`shrink-0 text-[length:var(--text-micro)] tabular-nums ${
+              dictation.phase === 'recording' ? 'text-danger' : 'text-faint'
+            }`}
+          >
+            {status}
+          </span>
         </div>
       </div>
     </div>
+  )
+}
+
+interface SendButtonProps {
+  /** A run is going, so this send joins the queue instead of starting one. */
+  readonly queues: boolean
+  readonly sendKey: string
+  readonly disabled: boolean
+  readonly onClick: () => void
+}
+
+/** Filled while it starts a run; outlined beside Stop while it only queues. */
+function SendButton({ queues, sendKey, disabled, onClick }: SendButtonProps): React.JSX.Element {
+  const label = queues ? 'Add to queue' : 'Send'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={`${label} (${sendKey})`}
+      className={`flex size-9 shrink-0 items-center justify-center rounded-full transition-all duration-[var(--duration-fast)] active:scale-95 disabled:cursor-not-allowed disabled:active:scale-100 ${
+        queues
+          ? 'border border-accent text-accent hover:bg-[color-mix(in_oklch,var(--c-accent)_14%,transparent)] disabled:border-line disabled:text-faint disabled:hover:bg-transparent'
+          : 'bg-accent text-canvas hover:bg-accent-bright disabled:bg-raised disabled:text-faint'
+      }`}
+    >
+      {queues ? (
+        <ListPlus aria-hidden className="size-[1.125rem]" strokeWidth={2.25} />
+      ) : (
+        <ArrowUp aria-hidden className="size-[1.125rem]" strokeWidth={2.5} />
+      )}
+      <span className="sr-only">{label}</span>
+    </button>
   )
 }
 

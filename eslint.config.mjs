@@ -29,6 +29,13 @@ export default defineConfig(
     }
   },
   {
+    // react-three-fiber elements take three.js properties, which this rule reads as bad DOM ones
+    files: ['src/renderer/src/components/office/**/*.tsx'],
+    rules: {
+      'react/no-unknown-property': 'off'
+    }
+  },
+  {
     // Electron loads these harnesses directly, so they must stay CommonJS.
     files: ['test/**/*.cjs', 'scripts/**/*.cjs'],
     rules: {

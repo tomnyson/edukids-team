@@ -1,4 +1,13 @@
+import type { ProviderId } from '@shared/types'
 import type { LLMRequest, LLMCallbacks, LLMRunResult } from './types'
+import { INITIAL_STREAM_STATE, feedOpenAIStream } from './openai-stream'
+
+/**
+ * Providers that only report token usage on a stream when asked. The others are not sent the
+ * option, since a server that does not know it may reject the request; usage is still read from
+ * any stream that carries it.
+ */
+const USAGE_ON_REQUEST: readonly ProviderId[] = ['openai', 'deepseek']
 
 const DEFAULT_ENDPOINTS: Record<string, string> = {
   openai: 'https://api.openai.com/v1',
@@ -38,7 +47,10 @@ export async function runOpenAICompatible(
       ...request.messages.map((m) => ({ role: m.role, content: m.content }))
     ],
     temperature: request.temperature ?? 0.7,
-    stream: true
+    stream: true,
+    ...(USAGE_ON_REQUEST.includes(request.provider)
+      ? { stream_options: { include_usage: true } }
+      : {})
   }
 
   const headers: Record<string, string> = {
@@ -60,74 +72,43 @@ export async function runOpenAICompatible(
     throw new Error(`Provider ${request.provider} returned status ${response.status}: ${errorText}`)
   }
 
-  let fullContent = ''
-  let fullReasoning = ''
-
   if (!response.body) throw new Error('Response body is empty')
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-  let inThinkTag = false
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
+  let fullContent = ''
+  let fullReasoning = ''
+  let tokensUsed: number | undefined
+  let state = INITIAL_STREAM_STATE
 
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith('data: ')) continue
-      const dataStr = trimmed.slice(6).trim()
-      if (dataStr === '[DONE]') break
-
-      try {
-        const json = JSON.parse(dataStr)
-        const delta = json.choices?.[0]?.delta
-        if (!delta) continue
-
-        // Handle explicit reasoning_content (DeepSeek R1 / Grok 3)
-        if (delta.reasoning_content) {
-          fullReasoning += delta.reasoning_content
-          callbacks.onReasoningDelta?.(delta.reasoning_content)
-        }
-
-        // Handle content, checking for inline <think> tags if reasoning_content is not separated
-        if (delta.content) {
-          let text = delta.content as string
-          if (text.includes('<think>')) {
-            inThinkTag = true
-            text = text.replace('<think>', '')
-          }
-          if (inThinkTag) {
-            if (text.includes('</think>')) {
-              const [thinkPart, contentPart] = text.split('</think>')
-              inThinkTag = false
-              fullReasoning += thinkPart
-              callbacks.onReasoningDelta?.(thinkPart)
-              if (contentPart) {
-                fullContent += contentPart
-                callbacks.onContentDelta(contentPart)
-              }
-            } else {
-              fullReasoning += text
-              callbacks.onReasoningDelta?.(text)
-            }
-          } else {
-            fullContent += text
-            callbacks.onContentDelta(text)
-          }
-        }
-      } catch {
-        // Skip malformed SSE chunks
+  const take = (chunk: string): void => {
+    const step = feedOpenAIStream(state, chunk)
+    state = step.state
+    for (const event of step.events) {
+      if (event.type === 'content') {
+        fullContent += event.text
+        callbacks.onContentDelta(event.text)
+      } else if (event.type === 'reasoning') {
+        fullReasoning += event.text
+        callbacks.onReasoningDelta?.(event.text)
+      } else {
+        tokensUsed = event.totalTokens
       }
     }
   }
 
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    take(decoder.decode(value, { stream: true }))
+  }
+  // A last line with no newline after it would otherwise stay in the buffer
+  take(`${decoder.decode()}\n`)
+
   return {
     text: fullContent,
     reasoningText: fullReasoning,
-    durationMs: Date.now() - startedAt
+    durationMs: Date.now() - startedAt,
+    tokensUsed
   }
 }
