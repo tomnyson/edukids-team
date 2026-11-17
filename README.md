@@ -83,3 +83,4 @@ src/
 └── shared/          # types + IPC channel names, used by both sides
 ```
 # edukids-team
+# edukids-team
